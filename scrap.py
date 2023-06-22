@@ -1,14 +1,17 @@
-import json
 from datetime import datetime
 class JSONMERGE():
 
-	noCheck = {"cbHis", "docType"}
+	noCheck = {"cbHis","upDtEp"}
+
+	addCrEp = True
+	addCrIso  = False
 	addCrLoc = False
+
 	addUpLoc = False
 	addUpIso = False
-	addCrIso  = False
-	addCrEp = True
+ 
 	qtyMath = True
+	
 	def __init__(self):
 		self.addUpLoc = False
 
@@ -17,7 +20,6 @@ class JSONMERGE():
 		return {"ep":int(now.timestamp()),"utc":now,"iso":now.astimezone().isoformat()}
 
 	def qtyMath(self,newestQty,oldestQty):
-
 		if oldestQty - newestQty > 0:
 			return {"qty": 0, "exceptionQty": False}
 		if oldestQty - newestQty == 0:
@@ -43,7 +45,11 @@ class JSONMERGE():
 			newDoc["upCrEp"] = docTime["ep"]
 		return newDoc
 
-	def updateDoc(self,doc, changes):
+	def updateDoc(self,doc, changes = []):
+
+		if len(changes) == 0:
+			return doc
+
 		docTime = self.makeTime()
 		doc["upDtEp"] = docTime["ep"]
 		if self.addUpIso:
@@ -84,7 +90,7 @@ class JSONMERGE():
 			mDoc = self.updateDoc(doc1,upList)
 		return mDoc
 
-	def mergeDocReal(self,doc1,doc2):
+	def blindMerge(self,doc1,doc2):
 		#which doc is newer
 		d1 = False
 		d2 = False
