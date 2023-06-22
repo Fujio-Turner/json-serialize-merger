@@ -1,14 +1,17 @@
 import json
 import sys
-sys.path.append('..')
-import scrap
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
+import JsonMerge
 
 if __name__ == "__main__":
 
-    with open('test-sample-json-data/INPUT-Simple-doc.json', 'r') as file:
+    with open(current_dir + '/test-sample-json-data/INPUT-Simple-doc.json', 'r') as file:
         d = json.load(file)
 
-    a = scrap.JSONMERGE()
+    a = JsonMerge.JSONMERGE()
 
     data = None
     try:
@@ -39,5 +42,5 @@ if __name__ == "__main__":
     else:
         print("check if has upDtEp is INT : FAIL")
 
-    with open("test-sample-json-data/OUTPUT-New-doc-made.json", "w") as file:
+    with open(current_dir + "/test-sample-json-data/OUTPUT-New-doc-made.json", "w") as file:
         json.dump(data, file)
