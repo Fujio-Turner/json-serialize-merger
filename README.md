@@ -30,7 +30,7 @@ In this project its designed to do the bookkeeping information and the merging o
 There are four main methods:
 + 1 `makeNewDoc(JSON)`
 
-This creates and puts the bookkeeping field names & timestamps information document and stores it the document. Just put in a plain JSON document in and out comes the same JSON but with more stuff (bookkeeping data). Now just store that output into the database.
+This creates and puts the bookkeeping field names & timestamps information document and stores it in the document. Just put in a plain JSON document in and out comes the same JSON but with more stuff (bookkeeping data). Now just store that output into the database. EXAMPLE BELOW
 
 | Input | Output |
 |--------|-------|
@@ -77,7 +77,7 @@ There are many types but most do:
 + **Highest Revision Wins** 
 Everytime a document is update a counter ,hidden or not hidden in the document, increases. The Document with the highest counter value wins.
 + **Newest Timestamp Wins**
-There is hidden or not hidden value in the document that has a timestamp. So hhe document with the newest one wins.
+There is hidden or not hidden value in the document that has a timestamp. So the document with the newest one wins.
 + **Vector Clocks**
 Click to read more: 
 [Vector clocks algorithm is based on vector of tuples ...](https://www.waitingforcode.com/big-data-algorithms/conflict-resolution-distributed-applications-vector-clocks/read)
