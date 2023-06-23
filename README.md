@@ -20,12 +20,23 @@ A common conflict resovle is timestamp. The "newest" timestamp between two docum
   "updatedBy":"customerRep-12345"
 }
 ```
-#####FINE GRAIN?
+##### FINE GRAIN?
 
 Many times a JSON document will have a timestamp to tell you when the document was last updated. But what changes and when was each change?
 
-###CUSTOM CONFLICT RESOLUTION (MERGE)
-This project will cover Timebased Stitching/serialzing.
+##### USEAGE
+There are four main methods:
++ `makeNewDoc(JSON)`
++ `updateDoc(JSON,array_of_changes)`
++ `mergeRequest(Your_JSON,Request_of_changes_JSON)`
++ `blindMerge(JSON_1,JSON_2)`
+
+<br/><br/>
+
+##### FUTURE
++ JSON non-root level , arrays and objects merging. Right now only root level single elements can be merged based on timestamp.
++ storing `cbHis` inside Couchbase's [xattrs](https://docs.couchbase.com/server/current/learn/data/extended-attributes-fundamentals.html#3.0@java-sdk:concept-docs:xattr.adoc)
++ AI friendly Source Code for converting the Python code to your favorite programming language.
 
 
 <br/><br/>
@@ -44,4 +55,4 @@ Click to read more:
 <br/><br/>
 
 ##### NOTE
-Personally time based conflict resolution is not my favorite way to resolve conflicts , but some people like the simplicity. You can get clock drift and/or different NPT servers that are off a few seconds or more. On consumer facing mobile apps users can root their phones setting the system time in the future or the past too.
+Personally time based conflict resolution is not my favorite way to resolve conflicts , but some people like the simplicity. You can get clock drift and/or different NPT servers that are off a few seconds or more. On consumer facing mobile apps users can root their phones set the system time in the future or the past too.
