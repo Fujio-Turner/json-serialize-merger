@@ -1,10 +1,10 @@
 from datetime import datetime
 class JSONMERGE():
 
-	noCheck = {"cbHis","upDtEp"}
+	noCheck = {"cbHis","docType","upDtEp"}
 	debug = False
  
-	addCrEp = True
+	addCrEp = False
 	addCrIso  = False
 	addCrLoc = False
 
