@@ -2,7 +2,8 @@ from datetime import datetime
 class JSONMERGE():
 
 	noCheck = {"cbHis","upDtEp"}
-
+	debug = False
+ 
 	addCrEp = True
 	addCrIso  = False
 	addCrLoc = False
@@ -91,7 +92,7 @@ class JSONMERGE():
 		return mDoc
 
 	def blindMerge(self,doc1,doc2):
-		#which doc is newer
+		#which doc is newer?
 		d1 = False
 		d2 = False
 		if doc1["upDtEp"] >= doc2["upDtEp"]:
@@ -104,7 +105,6 @@ class JSONMERGE():
 			d2 = True
 		upList = []
 		for k,v in m1Doc["cbHis"].items():
-			#print(k,v)
 			if k in m2Doc["cbHis"]:
 				if m2Doc["cbHis"][k]["t"] >= v["t"]:
 					print('m2 is newer',m2Doc["cbHis"][k]["t"],v["t"])
@@ -113,5 +113,4 @@ class JSONMERGE():
 					print('m1 is newer', m2Doc["cbHis"][k]["t"], v["t"])
 
 		print(upList)
-				#if m2Doc["cbHis"][k][t] >= v :
 		return m1Doc
