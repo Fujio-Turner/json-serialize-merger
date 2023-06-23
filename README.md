@@ -1,7 +1,4 @@
-# json-serialize-merger
-
-
-#### DATA/JSON IN CONFLICTS
+### DATA/JSON IN CONFLICTS
 In a JSON databases ,like Couchbase and in particular Couchbase Mobile, when you have a document(s) were two or more people change the same piece of information you get conflicts.
 
 ### CUSTOM CONFLICT RESOLUTION (MERGE)
@@ -9,7 +6,7 @@ This project will cover timebased stitching/serialzing i.e. merging a document b
 
 
 #### TIMEBASED
-A common conflict resovle is timestamp. The "newest" timestamp between two documents wins/saved. `updated`
+A common conflict resolution method is timestamp. The "newest" timestamp between two documents wins. Example on the field BELOW `updated`
 ```
 {
   "docType":"invoice",
@@ -22,26 +19,52 @@ A common conflict resovle is timestamp. The "newest" timestamp between two docum
 ```
 ##### FINE GRAIN?
 
-Many times a JSON document will have a timestamp to tell you when the document was last updated. But what changes and when was each change?
+Ok the document has a timestamp ,but what field(s) changed from the update and when did each change happen?
+
+##### FIELD LEVEL TIMESTAMPS
+The only way to know what field(s) changed and when is to track / assign a timestamp for the field(s) that changed. Example the JSON ABOVE when you change the field `"name":` FROM `"Robert Smith"` TO `"Bob Smith"` we put inside the document something like `{"field":"name","time":"some date"}` too.
 
 ##### USEAGE
+In this project its designed to do the bookkeeping information and the merging of two documents with the embedded bookkeeping information to a serialzed or stitch "time correct"<sup>1.</sup> version of documents. 
+
 There are four main methods:
 + `makeNewDoc(JSON)`
+
+This creates and puts the bookkeeping field names & timestamps information document and stores it the document. Just put in a plain JSON document in and out comes the same JSON but with more stuff (bookkeeping data). Now just store that output into the database.
+<br/><br/>
 + `updateDoc(JSON,array_of_changes)`
-+ `mergeRequest(Your_JSON,Request_of_changes_JSON)`
+
+Ok you have a document w/ bookeeping data from the ABOVE, but you want to update/change the document. Just pass that document into the function Plus an array of changes you want to apply `[{"name":"Bob M. Smith"},{"paid":true}]` and it will output the changes in the document with updated bookkeeping information.
+<br/><br/>
++ `mergeRequest(Your_JSON,Changes_JSON)`
+
+This is a special function because it lets you apply changes from a second document but from another Doc Id and/or docType. Ex.  
+1st document (Your_JSON): `"docType":"invoice"` <= apply changes from 2nd document to it(Changes_JSON): `"docType":"invoiceUpdates"`
+and the function will spit out merged "time correct"<sup>1.</sup> document `"docType":"invoice"` with changes. 
+
+<br/><br/>
 + `blindMerge(JSON_1,JSON_2)`
+
+Lets say you have two documents. In fact the exact same `docType` and docId/Key but with changed/conflicting data. Just put in both of the document/JSON and this function will figure it out and spit out a "time correct"<sup>1.</sup> single document. 
+
+***BONUS***
+In the above functions if you have a field called `qty` with an integer as a value when the functions do a merge the output will never be negative the lowest it will go is 0 (zero). You can turn it off if you like chaos :smirk:
 
 <br/><br/>
 
+##### LIMITS
++ JSON root level and single field timetracking only. Examples **YES:** `"name":"Bob Smith"` **NO:** `"zipCodes":["111","222"]` , `"address":{"city":"Lake Falls"}`
+
+
 ##### FUTURE
-+ JSON non-root level , arrays and objects merging. Right now only root level single elements can be merged based on timestamp.
++ non-root level document , array and object merging. Right now only root level single elements can be merged based on timestamp.
 + storing `cbHis` inside Couchbase's [xattrs](https://docs.couchbase.com/server/current/learn/data/extended-attributes-fundamentals.html#3.0@java-sdk:concept-docs:xattr.adoc)
 + AI friendly Source Code for converting the Python code to your favorite programming language.
 
 
 <br/><br/>
 
-### COMMON/DEFAULT CONFLICT WIN POLICIES
+### COMMON OTHER CONFLICT POLICIES
 There are many types but most do:
 + **Highest Revision Wins** 
 Everytime a document is update a counter ,hidden or not hidden in the document, increases. The Document with the highest counter value wins.
@@ -55,4 +78,6 @@ Click to read more:
 <br/><br/>
 
 ##### NOTE
-Personally time based conflict resolution is not my favorite way to resolve conflicts , but some people like the simplicity. You can get clock drift and/or different NPT servers that are off a few seconds or more. On consumer facing mobile apps users can root their phones set the system time in the future or the past too.
+Personally time based conflict resolution is not my favorite way to resolve conflicts , but some people like the simplicity. 
+
+<sup>1.</sup> You can get clock drift and/or different NPT servers that are off a few seconds or more off. On consumer facing mobile apps users can root their phones and set the system time in the future or the past too.

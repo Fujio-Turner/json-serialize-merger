@@ -13,7 +13,7 @@ class JSONMERGE():
  
 	qtyMath = True
 	
-	def __init__(self):
+	def __init__(self,config={}):
 		self.addUpLoc = False
 
 	def makeTime(self):
