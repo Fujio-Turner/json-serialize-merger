@@ -1,7 +1,1 @@
-{
-  "docType": "invoice",
-  "fName": "fujio",
-  "lname": "turner",
-  "apples": "red",
-  "qty": 20
-}
+{"docType":"invoice","name":"Bob Smith","address":"123 Fake St. Lake Falls, MA 8000","apples":"red"}
