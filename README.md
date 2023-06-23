@@ -1,11 +1,11 @@
 # json-serialize-merger
 
 
-####DATA/JSON IN CONFLICTS
+#### DATA/JSON IN CONFLICTS
 In a JSON databases ,like Couchbase and in particular Couchbase Mobile, when you have a document(s) were two or more people change the same piece of information you get conflicts.
 
-###CUSTOM CONFLICT RESOLUTION (MERGE)
-This project will cover Timebased Stitching/serialzing.
+### CUSTOM CONFLICT RESOLUTION (MERGE)
+This project will cover timebased stitching/serialzing i.e. merging a document based on field level timestamps.
 
 
 #### TIMEBASED
@@ -30,7 +30,7 @@ This project will cover Timebased Stitching/serialzing.
 
 <br/><br/>
 
-###COMMON/DEFAULT CONFLICT WIN POLICIES
+### COMMON/DEFAULT CONFLICT WIN POLICIES
 There are many types but most do:
 + **Highest Revision Wins** 
 Everytime a document is update a counter ,hidden or not hidden in the document, increases. The Document with the highest counter value wins.
@@ -43,5 +43,5 @@ Click to read more:
 
 <br/><br/>
 
-#####NOTE
-Personally time based conflict resolution is not my favorite way to resolve conflicts , but some people like the simplicity. You can get clock drift and/or different NPT servers that are off a few seconds or more.
+##### NOTE
+Personally time based conflict resolution is not my favorite way to resolve conflicts , but some people like the simplicity. You can get clock drift and/or different NPT servers that are off a few seconds or more. On consumer facing mobile apps users can root their phones setting the system time in the future or the past too.
