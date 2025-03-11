@@ -105,8 +105,7 @@ class JSONMERGE:
         doc["upDtEp"] = docTime["ep"]
         if self.addUpIso:
             doc["upDt"] = docTime["iso"]
-        for change in changes:
-            key, value = list(change.items())[0]
+        for key, value in changes.items():
             if key in self.noCheck:
                 continue
             keys = key.split(".")
@@ -134,36 +133,44 @@ class JSONMERGE:
                 current[last_key] = value
             else:
                 raise ValueError(f"Unsupported type for current: {type(current)}")
-            self.update_history(doc["_his"], key, value, docTime["ep"])  # Changed "cbHis" to "_his"
+            self.update_history(doc["_his"], key, value, docTime["ep"])
         return doc
 
     def mergeDocReq(self, doc1, doc2):
         mDoc = doc1.copy()
-        upList = []
-        for k, v1 in doc1["_his"].items():  # Changed "cbHis" to "_his"
-            if k in doc2["_his"]:  # Changed "cbHis" to "_his"
-                v2 = doc2["_his"][k]  # Changed "cbHis" to "_his"
+        upDict = {}
+        for k, v1 in doc1["_his"].items():
+            if k in doc2["_his"]:
+                v2 = doc2["_his"][k]
                 merged = self.merge_histories(v1, v2)
                 if merged != v1:
                     if k == "qty" and self.qtyMathEnabled:
                         qty = self.qtyMath(merged["v"], v1["v"])
-                        upList.append({k: qty["qty"]})
+                        upDict[k] = qty["qty"]
                     else:
-                        upList.append({k: merged["v"]})
-        if upList:
-            mDoc = self.updateDoc(doc1, upList)
+                        upDict[k] = merged["v"]
+        if upDict:
+            mDoc = self.updateDoc(doc1, upDict)
         return mDoc
 
     def blindMerge(self, doc1, doc2):
+        # Determine the base document based on update timestamp
         m1Doc = doc1 if doc1["upDtEp"] >= doc2["upDtEp"] else doc2
         m2Doc = doc2 if m1Doc is doc1 else doc1
-        upList = []
-        for k, v1 in m1Doc["_his"].items():  # Changed "cbHis" to "_his"
-            if k in m2Doc["_his"]:  # Changed "cbHis" to "_his"
-                v2 = m2Doc["_his"][k]  # Changed "cbHis" to "_his"
+        
+        # Collect updates from the history
+        upDict = {}
+        for k, v1 in m1Doc["_his"].items():
+            if k in m2Doc["_his"]:
+                v2 = m2Doc["_his"][k]
                 merged = self.merge_histories(v1, v2)
                 if merged != v1:
-                    upList.append({k: merged["v"]})
-        if upList:
-            m1Doc = self.updateDoc(m1Doc, upList)
-        return m1Doc
+                    upDict[k] = merged["v"]
+        
+        # Apply updates or use the base document if no changes
+        if upDict:
+            mDoc = self.updateDoc(m1Doc, upDict)
+        else:
+            mDoc = m1Doc  # Default to m1Doc if no updates are needed
+        
+        return mDoc

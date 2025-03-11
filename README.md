@@ -22,7 +22,7 @@ A common conflict resolution method is timestamp. The "newest" timestamp between
 Ok the document has a timestamp ,but what field(s) changed from the update and when did each change happen?
 
 ##### FIELD LEVEL TIMESTAMPS
-The only way to know what field(s) changed and when is to track / assign a timestamp for the field(s) that changed. Example the JSON ABOVE when you change the field `"name":` FROM `"Robert Smith"` TO `"Bob Smith"` we put inside the document something like `{"field":"name","time":"some date"}` too.
+The only way to know what field(s) changed and when is to track / assign a timestamp for the field(s) that changed. Example the JSON ABOVE when you change the field `"name":` FROM `"Robert Smith"` TO `"Bob Smith"` we put inside the document something like `"history":{"field":"name","time":"some date"}` too.
 
 ##### USEAGE
 In this project its designed to do the bookkeeping information and the merging of two documents with the embedded bookkeeping information to a serialzed or stitch "time correct"<sup>1.</sup> version of documents. 
@@ -37,13 +37,13 @@ This creates and puts the bookkeeping field names & timestamps information docum
 |```{"docType":"invoice","name":"Bob Smith","address":"123 Fake St. Lake Falls, MA 8000","apples":"red"}```|```{"docType": "invoice", "name": "Bob Smith", "address": "123 Fake St. Lake Falls, MA 8000", "apples": "red", "_his": {"name": {"v": "Bob Smith", "t": 1687515677}, "address": {"v": "123 Fake St. Lake Falls, MA 8000", "t": 1687515677}, "apples": {"v": "red", "t": 1687515677}}, "upDtEp": 1687515677}```|
 
 <br/><br/>
-+ 2 `updateDoc(JSON,array_of_changes)`
++ 2 `updateDoc(JSON,object_of_changes)`
 
-Ok you have a document w/ bookeeping data from the ABOVE, but you want to update/change the document. Just pass that document into the function Plus an array of changes you want to apply `[{"name":"Bob M. Smith"},{"paid":true}]` and it will output the changes in the document with updated bookkeeping information.
+Ok you have a document w/ bookeeping data from the ABOVE, but you want to update/change the document. Just pass that document into the function Plus an object of changes you want to apply `{"name":"Bob M. Smith","paid":true}` and it will output the changes in the document with updated bookkeeping information.
 
 |Input: Doc w/ History | Input: Change List |
 |--------|-------|
-|```{"docType": "invoice", "name": "Bob Smith", "address": "123 Fake St. Lake Falls, MA 8000", "apples": "red", "_his": {"name": {"v": "Bob Smith", "t": 1687515677}, "address": {"v": "123 Fake St. Lake Falls, MA 8000", "t": 1687515677}, "apples": {"v": "red", "t": 1687515677}}, "upDtEp": 1687515677}```| ```[{"apples":"blue"},{"nickName":"the guy"}]```|
+|```{"docType": "invoice", "name": "Bob Smith", "address": "123 Fake St. Lake Falls, MA 8000", "apples": "red", "_his": {"name": {"v": "Bob Smith", "t": 1687515677}, "address": {"v": "123 Fake St. Lake Falls, MA 8000", "t": 1687515677}, "apples": {"v": "red", "t": 1687515677}}, "upDtEp": 1687515677}```| ```{"apples":"blue","nickName":"the guy"}```|
 <br/><br/>
 + 3 `mergeRequest(Your_JSON,Changes_JSON)`
 
@@ -59,12 +59,6 @@ Lets say you have two documents. In fact the exact same `docType` and docId/Key 
 ***BONUS***
 In the above functions if you have a field called `qty` with an integer as a value when the functions do a merge the output will never be negative the lowest it will go is 0 (zero). You can turn it off if you like chaos :smirk:
 <br/><br/>
-
-##### LIMITS
- JSON root level and single field timetracking only.
-+ **YES:** `"name":"Bob Smith"` 
-+ **NO:** `"zipCode":["111","222"]` , `"address":{"city":"Lake Falls"}`
-
 
 ##### New Features
 + non-root level document , array and object merging based on timestamp.
