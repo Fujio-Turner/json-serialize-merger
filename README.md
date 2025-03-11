@@ -34,7 +34,7 @@ This creates and puts the bookkeeping field names & timestamps information docum
 
 | Input | Output |
 |--------|-------|
-|```{"docType":"invoice","name":"Bob Smith","address":"123 Fake St. Lake Falls, MA 8000","apples":"red"}```|```{"docType": "invoice", "name": "Bob Smith", "address": "123 Fake St. Lake Falls, MA 8000", "apples": "red", "cbHis": {"name": {"v": "Bob Smith", "t": 1687515677}, "address": {"v": "123 Fake St. Lake Falls, MA 8000", "t": 1687515677}, "apples": {"v": "red", "t": 1687515677}}, "upDtEp": 1687515677}```|
+|```{"docType":"invoice","name":"Bob Smith","address":"123 Fake St. Lake Falls, MA 8000","apples":"red"}```|```{"docType": "invoice", "name": "Bob Smith", "address": "123 Fake St. Lake Falls, MA 8000", "apples": "red", "_his": {"name": {"v": "Bob Smith", "t": 1687515677}, "address": {"v": "123 Fake St. Lake Falls, MA 8000", "t": 1687515677}, "apples": {"v": "red", "t": 1687515677}}, "upDtEp": 1687515677}```|
 
 <br/><br/>
 + 2 `updateDoc(JSON,array_of_changes)`
@@ -43,7 +43,7 @@ Ok you have a document w/ bookeeping data from the ABOVE, but you want to update
 
 |Input: Doc w/ History | Input: Change List |
 |--------|-------|
-|```{"docType": "invoice", "name": "Bob Smith", "address": "123 Fake St. Lake Falls, MA 8000", "apples": "red", "cbHis": {"name": {"v": "Bob Smith", "t": 1687515677}, "address": {"v": "123 Fake St. Lake Falls, MA 8000", "t": 1687515677}, "apples": {"v": "red", "t": 1687515677}}, "upDtEp": 1687515677}```| ```[{"apples":"blue"},{"nickName":"the guy"}]```|
+|```{"docType": "invoice", "name": "Bob Smith", "address": "123 Fake St. Lake Falls, MA 8000", "apples": "red", "_his": {"name": {"v": "Bob Smith", "t": 1687515677}, "address": {"v": "123 Fake St. Lake Falls, MA 8000", "t": 1687515677}, "apples": {"v": "red", "t": 1687515677}}, "upDtEp": 1687515677}```| ```[{"apples":"blue"},{"nickName":"the guy"}]```|
 <br/><br/>
 + 3 `mergeRequest(Your_JSON,Changes_JSON)`
 
@@ -66,9 +66,12 @@ In the above functions if you have a field called `qty` with an integer as a val
 + **NO:** `"zipCode":["111","222"]` , `"address":{"city":"Lake Falls"}`
 
 
+##### New Features
++ non-root level document , array and object merging based on timestamp.
+
 ##### FUTURE
-+ non-root level document , array and object merging. Right now only root level single elements can be merged based on timestamp.
-+ storing `cbHis` inside Couchbase's [xattrs](https://docs.couchbase.com/server/current/learn/data/extended-attributes-fundamentals.html#3.0@java-sdk:concept-docs:xattr.adoc)
+
++ storing `_his` inside Couchbase's [xattrs](https://docs.couchbase.com/server/current/learn/data/extended-attributes-fundamentals.html#3.0@java-sdk:concept-docs:xattr.adoc)
 + AI friendly Source Code for converting the Python code to your favorite programming language.
 <br/><br/>
 
