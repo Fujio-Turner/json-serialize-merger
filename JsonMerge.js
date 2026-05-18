@@ -6,8 +6,8 @@
 (function (root) {
   "use strict";
 
-  const SCHEMA_VERSION = 2;
-  const RESERVED_KEYS = new Set(["_his", "upDtEp", "crDtEp", "schemaV", "docType", "upDt", "crDt"]);
+  const SCHEMA_VERSION = 3;
+  const RESERVED_KEYS = new Set(["_his", "_hisF", "upDtEp", "crDtEp", "schemaV", "docType", "upDt", "crDt"]);
   const PATH_TOKEN = /([^.\[\]]+)|\[(\d+)\]/g;
 
   // ---------- time ----------
@@ -183,7 +183,9 @@
       const flat = flatten(doc, this.noCheck);
       const history = {};
       for (const path of Object.keys(flat)) {
-        const entry = { v: flat[path], t: ep };
+        // schemaV-3 / Option A: no redundant `v` in _his — live value lives
+        // in the document body at `path` and is fetched on demand.
+        const entry = { t: ep };
         if (this.addHashes) entry.h = valueHash(flat[path]);
         history[path] = entry;
       }
@@ -207,22 +209,29 @@
       for (const path of Object.keys(cb)) {
         if (!isQtyPath(path)) continue;
         const rec = cb[path];
-        if (typeof rec.v === "number" && rec.v < 0) {
+        let v;
+        try { v = getAtPath(doc, path); } catch (e) { continue; }
+        if (typeof v === "number" && v < 0) {
           setAtPath(doc, path, 0);
-          rec.v = 0;
           if ("h" in rec) rec.h = valueHash(0);
         }
       }
     }
     _stampChange(doc, cb, path, val, ep, prehash) {
       setAtPath(doc, path, val);
-      const rec = { v: val, t: ep };
+      const rec = { t: ep };
       if (this.addHashes) rec.h = prehash != null ? prehash : valueHash(val);
       cb[path] = rec;
     }
 
     updateDoc(doc, changes) {
       if (!changes) return doc;
+      // Accept any wire form (dict / columnar / cbor) transparently.
+      if (doc && doc._hisF != null) {
+        const u = unpackHis(doc);
+        for (const k of Object.keys(doc)) delete doc[k];
+        Object.assign(doc, u);
+      }
       let flatChanges = {};
       if (Array.isArray(changes)) {
         for (const item of changes) {
@@ -243,8 +252,10 @@
       for (const path of Object.keys(flatChanges)) {
         if (this.noCheck.has(topSegment(path))) continue;
         const newVal = flatChanges[path];
-        const old = cb[path];
-        if (old && JSON.stringify(old.v) === JSON.stringify(newVal)) continue;
+        // schemaV-3: compare against the live value, not _his[path].v
+        let cur;
+        try { cur = getAtPath(doc, path); } catch (e) { cur = undefined; }
+        if (cb[path] && JSON.stringify(cur) === JSON.stringify(newVal)) continue;
         if (ep == null) ep = nowEpoch();
         this._stampChange(doc, cb, path, newVal, ep);
       }
@@ -290,7 +301,11 @@
     }
     patch_doc(d, o) { return this.patchDoc(d, o); }
 
-    _ensureManaged(doc) { return this.isManaged(doc) ? doc : this.makeNewDoc(deepCopy(doc)); }
+    _ensureManaged(doc) {
+      // Accept dict / columnar / cbor wire forms transparently.
+      if (doc && doc._hisF != null) doc = unpackHis(doc);
+      return this.isManaged(doc) ? doc : this.makeNewDoc(deepCopy(doc));
+    }
 
     mergeDocReq(doc1, doc2) {
       doc1 = this._ensureManaged(doc1);
@@ -301,11 +316,16 @@
       for (const path of Object.keys(small)) {
         const r1 = cb1[path], r2 = cb2[path];
         if (!r1 || !r2) continue;
-        if (JSON.stringify(r1.v) === JSON.stringify(r2.v)) continue;
         if ((r2.t || 0) <= (r1.t || 0)) continue;
-        const val = this._resolveQty(path, r2.v);
+        // schemaV-3: hash-equality fast path; fall back to live values.
+        if (r1.h != null && r2.h != null && r1.h === r2.h) continue;
+        let v1, v2;
+        try { v1 = getAtPath(doc1, path); } catch (e) { v1 = undefined; }
+        try { v2 = getAtPath(doc2, path); } catch (e) { continue; }
+        if (JSON.stringify(v1) === JSON.stringify(v2)) continue;
+        const val = this._resolveQty(path, v2);
         if (ep == null) ep = nowEpoch();
-        const prehash = (val === r2.v) ? r2.h : undefined;
+        const prehash = (val === v2) ? r2.h : undefined;
         this._stampChange(doc1, cb1, path, val, ep, prehash);
       }
       if (ep != null) {
@@ -328,15 +348,20 @@
       for (const path of Object.keys(cbOther)) {
         const rO = cbOther[path];
         const rB = cbBase[path];
+        let vO;
+        try { vO = getAtPath(other, path); } catch (e) { continue; }
         let val;
-        if (!rB) val = this._resolveQty(path, rO.v);
+        if (!rB) val = this._resolveQty(path, vO);
         else {
-          if (JSON.stringify(rB.v) === JSON.stringify(rO.v)) continue;
           if ((rO.t || 0) <= (rB.t || 0)) continue;
-          val = this._resolveQty(path, rO.v);
+          if (rB.h != null && rO.h != null && rB.h === rO.h) continue;
+          let vB;
+          try { vB = getAtPath(base, path); } catch (e) { vB = undefined; }
+          if (JSON.stringify(vB) === JSON.stringify(vO)) continue;
+          val = this._resolveQty(path, vO);
         }
         if (ep == null) ep = nowEpoch();
-        const prehash = (val === rO.v) ? rO.h : undefined;
+        const prehash = (val === vO) ? rO.h : undefined;
         this._stampChange(base, cbBase, path, val, ep, prehash);
       }
       if (ep != null) {
@@ -357,20 +382,21 @@
       const conflicts = [];
       const all = new Set([...Object.keys(cbO), ...Object.keys(cbT), ...Object.keys(cbB)]);
       const changes = [];
+      const live = (d, p, fb) => { try { return getAtPath(d, p); } catch (e) { return fb; } };
       for (const path of all) {
-        const b = cbB[path] ? cbB[path].v : null;
-        const o = cbO[path] ? cbO[path].v : b;
-        const t = cbT[path] ? cbT[path].v : b;
+        const b = (path in cbB) ? live(base, path, null) : null;
+        const o = (path in cbO) ? live(ours, path, b) : b;
+        const t = (path in cbT) ? live(theirs, path, b) : b;
         const eq = (x, y) => JSON.stringify(x) === JSON.stringify(y);
         if (eq(o, t)) continue;
         if (eq(o, b) && !eq(t, b)) { changes.push({ [path]: t }); }
         else if (eq(t, b) && !eq(o, b)) { continue; }
         else {
           conflicts.push(path);
-          const oRec = cbO[path] || { v: o, t: 0 };
-          const tRec = cbT[path] || { v: t, t: 0 };
-          const newer = (tRec.t || 0) > (oRec.t || 0) ? tRec : oRec;
-          changes.push({ [path]: this._resolveQty(path, newer.v) });
+          const oRec = cbO[path] || { t: 0 };
+          const tRec = cbT[path] || { t: 0 };
+          const newerVal = (tRec.t || 0) > (oRec.t || 0) ? t : o;
+          changes.push({ [path]: this._resolveQty(path, newerVal) });
         }
       }
       if (changes.length) this.updateDoc(merged, changes);
@@ -380,11 +406,13 @@
     three_way_merge(b, o, t) { return this.threeWayMerge(b, o, t); }
 
     historyIso(doc) {
+      if (doc && doc._hisF != null) doc = unpackHis(doc);
       const out = {};
       const cb = doc._his || {};
       for (const path of Object.keys(cb)) {
         const r = Object.assign({}, cb[path]);
         if ("t" in r) r.tIso = epochToIso(r.t);
+        try { r.v = getAtPath(doc, path); } catch (e) { /* missing */ }
         out[path] = r;
       }
       return out;
@@ -392,15 +420,20 @@
     history_iso(d) { return this.historyIso(d); }
 
     listChangesSince(doc, sinceEp) {
+      if (doc && doc._hisF != null) doc = unpackHis(doc);
       const out = [];
       const cb = doc._his || {};
       for (const path of Object.keys(cb)) {
-        if ((cb[path].t || 0) >= sinceEp) out.push({ path, v: cb[path].v, t: cb[path].t });
+        if ((cb[path].t || 0) >= sinceEp) {
+          let v; try { v = getAtPath(doc, path); } catch (e) { v = null; }
+          out.push({ path, v, t: cb[path].t });
+        }
       }
       return out.sort((a, b) => b.t - a.t);
     }
 
     validate(doc) {
+      if (doc && doc._hisF != null) doc = unpackHis(doc);
       const issues = [];
       if (!this.isManaged(doc)) return ["doc is not managed (missing _his/upDtEp)"];
       const flat = flatten(doc, this.noCheck);
@@ -408,8 +441,7 @@
       for (const path of Object.keys(flat)) {
         const rec = cb[path];
         if (!rec) { issues.push(`untracked field: ${path}`); continue; }
-        if (JSON.stringify(rec.v) !== JSON.stringify(flat[path]))
-          issues.push(`_his/value drift at ${path}`);
+        // schemaV-3: only hash-mismatch detects tamper (no `v` to drift)
         if ("h" in rec && rec.h !== valueHash(flat[path]))
           issues.push(`hash mismatch at ${path} (tampered?)`);
       }
@@ -420,12 +452,178 @@
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // _his wire-format helpers — Options D + E
+  // ---------------------------------------------------------------------------
+  // In-memory _his is a dict-of-dicts ({t,h} records). For storage you
+  // can opt into a smaller wire layout via packHis() and reverse it with
+  // unpackHis(). All library functions auto-unpack on entry, so once
+  // you've packed a doc you can hand it back to the lib as-is.
+  //
+  //   fmt='cols' (Option E):  _his -> {p:[...],t:[...],h:[...]}, _hisF="c"
+  //   fmt='cbor' (Option D):  _his -> {d:"<base64>", s:"<sha256>"}, _hisF="b"
+  //
+  // The CBOR encoder/decoder below is a minimal inline implementation
+  // covering exactly the shapes we use (uint, string, array, map). It
+  // avoids any external dependency in the browser.
+
+  function _hisPackCols(his) {
+    const paths = [], ts = [], hs = [];
+    const keys = Object.keys(his);
+    const hasH = keys.some(k => "h" in his[k]);
+    for (const p of keys) {
+      paths.push(p);
+      ts.push((his[p].t | 0));
+      if (hasH) hs.push(his[p].h || "");
+    }
+    const out = { p: paths, t: ts };
+    if (hasH) out.h = hs;
+    return out;
+  }
+  function _hisUnpackCols(packed) {
+    const paths = packed.p || [], ts = packed.t || [], hs = packed.h;
+    const out = {};
+    for (let i = 0; i < paths.length; i++) {
+      const rec = { t: ts[i] | 0 };
+      if (hs && i < hs.length && hs[i] !== "") rec.h = hs[i];
+      out[paths[i]] = rec;
+    }
+    return out;
+  }
+
+  // --- minimal CBOR (RFC 8949 subset: uint, tstr, array, map) ---
+  function _cborEncode(v) {
+    const out = [];
+    const utf8 = new TextEncoder();
+    function head(major, val) {
+      if (val < 24) out.push((major << 5) | val);
+      else if (val < 256) { out.push((major << 5) | 24); out.push(val); }
+      else if (val < 65536) { out.push((major << 5) | 25); out.push((val >> 8) & 0xff, val & 0xff); }
+      else { out.push((major << 5) | 26); out.push((val >>> 24) & 0xff, (val >>> 16) & 0xff, (val >>> 8) & 0xff, val & 0xff); }
+    }
+    function enc(x) {
+      if (typeof x === "number" && Number.isInteger(x) && x >= 0) head(0, x);
+      else if (typeof x === "string") {
+        const bytes = utf8.encode(x);
+        head(3, bytes.length);
+        for (let i = 0; i < bytes.length; i++) out.push(bytes[i]);
+      } else if (Array.isArray(x)) {
+        head(4, x.length);
+        for (const e of x) enc(e);
+      } else if (x && typeof x === "object") {
+        const ks = Object.keys(x);
+        head(5, ks.length);
+        for (const k of ks) { enc(k); enc(x[k]); }
+      } else {
+        throw new Error("cbor: unsupported value " + typeof x);
+      }
+    }
+    enc(v);
+    return new Uint8Array(out);
+  }
+  function _cborDecode(buf) {
+    let i = 0;
+    const utf8 = new TextDecoder();
+    function readHead() {
+      const b = buf[i++];
+      const major = b >> 5, info = b & 0x1f;
+      let val;
+      if (info < 24) val = info;
+      else if (info === 24) val = buf[i++];
+      else if (info === 25) { val = (buf[i] << 8) | buf[i + 1]; i += 2; }
+      else if (info === 26) { val = (buf[i] * 0x1000000) + (buf[i + 1] << 16) + (buf[i + 2] << 8) + buf[i + 3]; i += 4; }
+      else throw new Error("cbor: unsupported length info " + info);
+      return { major, val };
+    }
+    function dec() {
+      const { major, val } = readHead();
+      if (major === 0) return val;
+      if (major === 3) { const s = utf8.decode(buf.subarray(i, i + val)); i += val; return s; }
+      if (major === 4) { const a = []; for (let k = 0; k < val; k++) a.push(dec()); return a; }
+      if (major === 5) { const o = {}; for (let k = 0; k < val; k++) { const key = dec(); o[key] = dec(); } return o; }
+      throw new Error("cbor: unsupported major " + major);
+    }
+    return dec();
+  }
+  function _bytesToB64(bytes) {
+    let s = "";
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return btoa(s);
+  }
+  function _b64ToBytes(b64) {
+    const s = atob(b64);
+    const out = new Uint8Array(s.length);
+    for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);
+    return out;
+  }
+  // Use the same FNV-ish short hash for the integrity field (mirrors valueHash).
+  function _bytesHash(bytes) {
+    let s = "";
+    for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return valueHash(s);
+  }
+  function _hisPackCbor(his) {
+    const cols = _hisPackCols(his);
+    const bytes = _cborEncode(cols);
+    return { d: _bytesToB64(bytes), s: _bytesHash(bytes) };
+  }
+  function _hisUnpackCbor(packed) {
+    const bytes = _b64ToBytes(packed.d);
+    if (_bytesHash(bytes) !== packed.s) {
+      throw new Error("_his cbor blob hash mismatch (tampered or corrupt)");
+    }
+    return _hisUnpackCols(_cborDecode(bytes));
+  }
+
+  /**
+   * packHis(doc, fmt='cols'|'cbor')
+   *   Returns a shallow copy of `doc` with `_his` re-encoded into a
+   *   smaller wire layout. Sets `_hisF` so the format can be detected.
+   *   No-op if `_hisF` is already set to the requested format.
+   */
+  function packHis(doc, fmt) {
+    fmt = fmt || "cols";
+    if (fmt !== "cols" && fmt !== "cbor") throw new Error("unknown packHis fmt: " + fmt);
+    const out = deepCopy(doc);
+    const his = out._his || {};
+    // If already packed in some form, normalize first.
+    if (out._hisF != null) {
+      const tmp = unpackHis(out);
+      for (const k of Object.keys(out)) delete out[k];
+      Object.assign(out, tmp);
+    }
+    if (fmt === "cols") {
+      out._his = _hisPackCols(out._his || his);
+      out._hisF = "c";
+    } else {
+      out._his = _hisPackCbor(out._his || his);
+      out._hisF = "b";
+    }
+    return out;
+  }
+
+  /**
+   * unpackHis(doc)
+   *   Returns a copy of `doc` with `_his` restored to dict-of-dicts.
+   *   No-op when `_hisF` is absent (already unpacked).
+   */
+  function unpackHis(doc) {
+    if (!doc || doc._hisF == null) return doc;
+    const out = deepCopy(doc);
+    if (out._hisF === "c") out._his = _hisUnpackCols(out._his);
+    else if (out._hisF === "b") out._his = _hisUnpackCbor(out._his);
+    else throw new Error("unknown _hisF marker: " + out._hisF);
+    delete out._hisF;
+    return out;
+  }
+
   const api = {
     JSONMERGE,
     nowEpoch, epochToIso, isoToEpoch,
     parsePath, getAtPath, setAtPath, hasPath, delAtPath,
     flatten, unflatten, valueHash, hashDoc,
     toPointer, fromPointer,
+    packHis, unpackHis,
     SCHEMA_VERSION, RESERVED_KEYS
   };
   root.JsonMerge = api;

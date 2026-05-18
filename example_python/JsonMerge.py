@@ -4,24 +4,33 @@ JsonMerge.py
 
 Field-level, timestamp-based conflict resolution for JSON documents.
 
-Storage model (the "_his" sidecar)
------------------------------------
+Storage model (the "_his" sidecar) — schemaV 3
+----------------------------------------------
 Every managed document carries a top-level bookkeeping object named
 ``_his``. It maps a **path** (dotted/bracket notation, see below) to a
-record describing the last known value, the epoch timestamp it was set,
-and a short content hash for tamper / change detection:
+record describing only the epoch timestamp when the field was last set
+and a short content hash for tamper / drift detection. The *value*
+itself lives in the user document at ``path`` and is read on demand –
+this is the schemaV-3 "Option A" size win:
 
     {
       "_his": {
-        "name":              {"v": "Bob",  "t": 1700000000, "h": "a1b2c3d4"},
-        "address.city":      {"v": "LF",   "t": 1700000000, "h": "..."},
-        "tags[0]":           {"v": "vip",  "t": 1700000000, "h": "..."},
-        "lines[2].sku":      {"v": "X-99", "t": 1700000000, "h": "..."}
+        "name":              {"t": 1700000000, "h": "a1b2c3d4"},
+        "address.city":      {"t": 1700000000, "h": "..."},
+        "tags[0]":           {"t": 1700000000, "h": "..."},
+        "lines[2].sku":      {"t": 1700000000, "h": "..."}
       },
       "upDtEp":   1700000000,
       "crDtEp":   1700000000,
-      "schemaV":  2
+      "schemaV":  3
     }
+
+For wire-format size reductions see ``pack_his`` / ``unpack_his`` which
+expose two opt-in wire layouts:
+
+* ``'cols'`` – columnar JSON ``{"p":[...], "t":[...], "h":[...]}``
+* ``'cbor'`` – the columnar payload encoded as CBOR and base64-wrapped
+  with a sha256 integrity hash (requires the ``cbor2`` package).
 
 * Timestamps are stored as **integer Unix epoch seconds** (UTC). Helpers
   ``epoch_to_iso`` / ``iso_to_epoch`` convert to/from ISO-8601 on demand.
@@ -74,11 +83,11 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 # Constants
 # ---------------------------------------------------------------------------
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 # Top-level keys that are part of the bookkeeping itself and must never
 # be tracked as user fields.
-RESERVED_KEYS = {"_his", "upDtEp", "crDtEp", "schemaV", "docType"}
+RESERVED_KEYS = {"_his", "_hisF", "upDtEp", "crDtEp", "schemaV", "docType"}
 
 _PATH_TOKEN = re.compile(r"([^.\[\]]+)|\[(\d+)\]")
 
@@ -332,12 +341,17 @@ class JSONMERGE:
     # --------------------------- lifecycle -------------------------------
 
     def make_new_doc(self, doc: Dict[str, Any]) -> Dict[str, Any]:
-        """Stamp a plain doc with _his + timestamps. Mutates and returns ``doc``."""
+        """Stamp a plain doc with _his + timestamps. Mutates and returns ``doc``.
+
+        schemaV-3: ``_his[path]`` no longer stores ``v`` (the live value is
+        read on demand from ``doc`` at ``path``). Only ``{t}`` and the
+        optional content hash ``h`` are kept.
+        """
         ep = now_epoch()
         flat = flatten(doc, skip=self.noCheck)
         history: Dict[str, Dict[str, Any]] = {}
         for path, val in flat.items():
-            entry = {"v": val, "t": ep}
+            entry: Dict[str, Any] = {"t": ep}
             if self.addHashes:
                 entry["h"] = value_hash(val)
             history[path] = entry
@@ -366,6 +380,12 @@ class JSONMERGE:
         """
         if not changes:
             return doc
+
+        # Accept packed wire forms transparently — _his is library-only meta.
+        if doc.get("_hisF") is not None:
+            unpacked = unpack_his(doc)
+            doc.clear()
+            doc.update(unpacked)
 
         # Normalize to a flat {path: value} dict. Hot path: legacy single-key
         # dicts skip the flatten() overhead entirely.
@@ -454,17 +474,23 @@ class JSONMERGE:
         return max(0, val)
 
     def _clamp_qty_fields(self, doc: Dict[str, Any]) -> None:
-        """Walk _his once; clamp any '...qty' leaf to >= 0 (when qtyMath is on)."""
+        """Walk _his once; clamp any '...qty' leaf to >= 0 (when qtyMath is on).
+
+        schemaV-3: reads the live value via ``get_at_path`` since the
+        ``v`` field no longer lives inside ``_his``.
+        """
         if not self.qtyMath:
             return
         cb = doc.get("_his", {})
         for path, rec in cb.items():
             if not _is_qty_path(path):
                 continue
-            v = rec.get("v")
+            try:
+                v = get_at_path(doc, path)
+            except (KeyError, IndexError, TypeError):
+                continue
             if isinstance(v, (int, float)) and v < 0:
                 set_at_path(doc, path, 0)
-                rec["v"] = 0
                 if "h" in rec:
                     rec["h"] = value_hash(0)
 
@@ -483,7 +509,7 @@ class JSONMERGE:
         Caller is responsible for having decided the value actually changed.
         """
         set_at_path(doc, path, val)
-        rec: Dict[str, Any] = {"v": val, "t": ep}
+        rec: Dict[str, Any] = {"t": ep}
         if self.addHashes:
             rec["h"] = prehash if prehash is not None else value_hash(val)
         cb[path] = rec
@@ -505,13 +531,26 @@ class JSONMERGE:
             rec2 = cb2.get(path)
             if rec1 is None or rec2 is None:
                 continue
-            if rec1["v"] == rec2["v"] or rec2.get("t", 0) <= rec1.get("t", 0):
+            if rec2.get("t", 0) <= rec1.get("t", 0):
                 continue
-            val = self._resolve_qty(path, rec2["v"])
+            # schemaV-3: hash equality is the cheap "values identical?" test.
+            # Fall back to live get_at_path when either hash is missing.
+            h1, h2 = rec1.get("h"), rec2.get("h")
+            if h1 is not None and h2 is not None:
+                if h1 == h2:
+                    continue
+            elif has_path(doc1, path) and has_path(doc2, path) \
+                    and get_at_path(doc1, path) == get_at_path(doc2, path):
+                continue
+            try:
+                src_val = get_at_path(doc2, path)
+            except (KeyError, IndexError, TypeError):
+                continue
+            val = self._resolve_qty(path, src_val)
             if ep is None:
                 ep = now_epoch()
             # Reuse rec2's precomputed hash when the value passed through unchanged.
-            prehash = rec2.get("h") if val == rec2["v"] else None
+            prehash = rec2.get("h") if val == src_val else None
             self._stamp_change(doc1, cb1, path, val, ep, prehash=prehash)
         if ep is not None:
             doc1["upDtEp"] = ep
@@ -541,17 +580,28 @@ class JSONMERGE:
         cb_other = other["_his"]
         ep: Optional[int] = None
         for path, rec_o in cb_other.items():
+            try:
+                src_val = get_at_path(other, path)
+            except (KeyError, IndexError, TypeError):
+                continue
             rec_b = cb_base.get(path)
             if rec_b is None:
                 # 'other' has a field 'base' doesn't know about — take it.
-                val = self._resolve_qty(path, rec_o["v"])
+                val = self._resolve_qty(path, src_val)
             else:
-                if rec_b["v"] == rec_o["v"] or rec_o.get("t", 0) <= rec_b.get("t", 0):
+                if rec_o.get("t", 0) <= rec_b.get("t", 0):
                     continue
-                val = self._resolve_qty(path, rec_o["v"])
+                # Hash-equality short-circuit (Option A); live fallback when missing.
+                h_b, h_o = rec_b.get("h"), rec_o.get("h")
+                if h_b is not None and h_o is not None:
+                    if h_b == h_o:
+                        continue
+                elif has_path(base, path) and get_at_path(base, path) == src_val:
+                    continue
+                val = self._resolve_qty(path, src_val)
             if ep is None:
                 ep = now_epoch()
-            prehash = rec_o.get("h") if val == rec_o["v"] else None
+            prehash = rec_o.get("h") if val == src_val else None
             self._stamp_change(base, cb_base, path, val, ep, prehash=prehash)
         if ep is not None:
             base["upDtEp"] = ep
@@ -583,10 +633,18 @@ class JSONMERGE:
         conflicts: List[str] = []
         all_paths = set(cb_ours) | set(cb_theirs) | set(cb_base)
         changes: List[Dict[str, Any]] = []
+
+        def _live(doc: Dict[str, Any], path: str, default: Any) -> Any:
+            """schemaV-3: pull the value from the doc body, not _his."""
+            try:
+                return get_at_path(doc, path)
+            except (KeyError, IndexError, TypeError):
+                return default
+
         for path in all_paths:
-            b = cb_base.get(path, {}).get("v") if cb_base.get(path) else None
-            o = cb_ours.get(path, {}).get("v") if cb_ours.get(path) else b
-            t = cb_theirs.get(path, {}).get("v") if cb_theirs.get(path) else b
+            b = _live(base, path, None) if path in cb_base else None
+            o = _live(ours, path, b) if path in cb_ours else b
+            t = _live(theirs, path, b) if path in cb_theirs else b
             if o == t:
                 continue
             if o == b and t != b:
@@ -597,10 +655,13 @@ class JSONMERGE:
             else:
                 # Both sides changed from base -> conflict
                 conflicts.append(path)
-                ours_rec = cb_ours.get(path, {"v": o, "t": 0})
-                their_rec = cb_theirs.get(path, {"v": t, "t": 0})
-                newer = their_rec if their_rec.get("t", 0) > ours_rec.get("t", 0) else ours_rec
-                val = self._resolve_qty(path, newer["v"])
+                ours_rec = cb_ours.get(path, {"t": 0})
+                their_rec = cb_theirs.get(path, {"t": 0})
+                if their_rec.get("t", 0) > ours_rec.get("t", 0):
+                    newer_val = t
+                else:
+                    newer_val = o
+                val = self._resolve_qty(path, newer_val)
                 changes.append({path: val})
         if changes:
             self.update_doc(merged, changes)
@@ -613,7 +674,12 @@ class JSONMERGE:
         return isinstance(doc, dict) and "_his" in doc and "upDtEp" in doc
 
     def validate(self, doc: Dict[str, Any]) -> List[str]:
-        """Return a list of warnings (empty = healthy)."""
+        """Return a list of warnings (empty = healthy).
+
+        schemaV-3: there is no `_his[path].v` to drift against, so drift is
+        detected purely via the per-field hash ``h`` (when ``addHashes``
+        is on). Untracked fields and dead ``_his`` paths are still flagged.
+        """
         issues: List[str] = []
         if not self.is_managed(doc):
             return ["doc is not managed (missing _his/upDtEp)"]
@@ -624,8 +690,6 @@ class JSONMERGE:
             if rec is None:
                 issues.append(f"untracked field: {path}")
                 continue
-            if rec.get("v") != val:
-                issues.append(f"_his/value drift at {path}")
             if "h" in rec and rec["h"] != value_hash(val):
                 issues.append(f"hash mismatch at {path} (tampered?)")
         for path in cb:
@@ -634,12 +698,20 @@ class JSONMERGE:
         return issues
 
     def history_iso(self, doc: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
-        """Return _his with epoch timestamps expanded to ISO-8601 strings."""
+        """Return _his with epoch timestamps expanded to ISO-8601 strings.
+
+        schemaV-3: ``v`` is hydrated from the live doc body for callers
+        that still expect to see the value alongside the timestamp.
+        """
         out: Dict[str, Dict[str, Any]] = {}
         for path, rec in doc.get("_his", {}).items():
             r = dict(rec)
             if "t" in r:
                 r["tIso"] = epoch_to_iso(r["t"])
+            try:
+                r["v"] = get_at_path(doc, path)
+            except (KeyError, IndexError, TypeError):
+                pass
             out[path] = r
         return out
 
@@ -648,13 +720,27 @@ class JSONMERGE:
         out: List[Dict[str, Any]] = []
         for path, rec in doc.get("_his", {}).items():
             if rec.get("t", 0) >= since_epoch:
-                out.append({"path": path, "v": rec.get("v"), "t": rec.get("t")})
+                try:
+                    v = get_at_path(doc, path)
+                except (KeyError, IndexError, TypeError):
+                    v = None
+                out.append({"path": path, "v": v, "t": rec.get("t")})
         return sorted(out, key=lambda x: x["t"], reverse=True)
 
     # --------------------------- internals -------------------------------
 
     def _ensure_managed(self, doc: Dict[str, Any]) -> Dict[str, Any]:
-        """If a doc lacks _his, stamp it on the fly so merge ops are safe."""
+        """Normalize a doc so the merge ops see the canonical in-memory form.
+
+        Accepts any of the three wire shapes:
+          * dict-of-dicts (default in-memory)
+          * columnar JSON  (``_hisF == "c"``)  — Option E
+          * CBOR blob      (``_hisF == "b"``)  — Option D
+        Auto-calls ``unpack_his`` when the marker is set, so callers don't
+        have to: ``_his`` becomes "library-only" metadata.
+        """
+        if doc.get("_hisF") is not None:
+            doc = unpack_his(doc)
         if not self.is_managed(doc):
             return self.make_new_doc(copy.deepcopy(doc))
         return doc
@@ -690,3 +776,138 @@ def _escape_ptr(s: str) -> str:
 
 def _unescape_ptr(s: str) -> str:
     return s.replace("~1", "/").replace("~0", "~")
+
+
+# ---------------------------------------------------------------------------
+# Wire-format helpers — Options D + E
+# ---------------------------------------------------------------------------
+#
+# In-memory ``_his`` is a dict-of-dicts (schemaV-3 ``{t,h}`` records). For
+# storage / transport you can opt into a smaller wire layout via
+# ``pack_his(doc, fmt=...)`` and reverse it with ``unpack_his(doc)``.
+#
+#   fmt='cols' (Option E):
+#       _his  -> {"p":["...",...], "t":[...], "h":["...",...]}
+#       _hisF -> "c"
+#
+#   fmt='cbor' (Option D):
+#       _his  -> {"d":"<base64-cbor>", "s":"<sha256 of bytes>"}
+#       _hisF -> "b"
+#
+# All other library functions expect the dict-of-dicts shape; call
+# ``unpack_his(doc)`` immediately after loading from storage.
+
+import base64 as _b64
+
+
+def _his_pack_cols(his: Dict[str, Dict[str, Any]]) -> Dict[str, List[Any]]:
+    """Dict-of-dicts ``_his`` -> columnar ``{"p":[...],"t":[...],"h":[...]}``."""
+    paths: List[str] = []
+    ts: List[int] = []
+    hs: List[str] = []
+    has_h = any("h" in r for r in his.values())
+    for p, r in his.items():
+        paths.append(p)
+        ts.append(int(r.get("t", 0)))
+        if has_h:
+            hs.append(r.get("h", ""))
+    out: Dict[str, List[Any]] = {"p": paths, "t": ts}
+    if has_h:
+        out["h"] = hs
+    return out
+
+
+def _his_unpack_cols(packed: Dict[str, List[Any]]) -> Dict[str, Dict[str, Any]]:
+    """Columnar -> dict-of-dicts."""
+    paths = packed.get("p", [])
+    ts = packed.get("t", [])
+    hs = packed.get("h")
+    out: Dict[str, Dict[str, Any]] = {}
+    for i, p in enumerate(paths):
+        rec: Dict[str, Any] = {"t": int(ts[i])}
+        if hs is not None and i < len(hs) and hs[i] != "":
+            rec["h"] = hs[i]
+        out[p] = rec
+    return out
+
+
+def _his_pack_cbor(his: Dict[str, Dict[str, Any]]) -> Dict[str, str]:
+    """Dict-of-dicts -> ``{"d":"<base64>", "s":"<sha256>"}`` via CBOR.
+
+    Requires the optional ``cbor2`` dependency. Stores the columnar form
+    as a CBOR blob, base64-wrapped so the outer wire format can stay
+    JSON. The sha256 in ``s`` covers the *raw bytes* and is verified on
+    unpack to give the integrity-check guarantee the design called for.
+    """
+    try:
+        import cbor2  # type: ignore
+    except ImportError as e:  # pragma: no cover - depends on user env
+        raise RuntimeError(
+            "pack_his(fmt='cbor') requires the 'cbor2' package; "
+            "install it with `pip install cbor2`."
+        ) from e
+    blob: bytes = cbor2.dumps(_his_pack_cols(his))
+    return {
+        "d": _b64.b64encode(blob).decode("ascii"),
+        "s": hashlib.sha256(blob).hexdigest(),
+    }
+
+
+def _his_unpack_cbor(packed: Dict[str, str]) -> Dict[str, Dict[str, Any]]:
+    """Inverse of ``_his_pack_cbor``. Raises if the integrity hash fails."""
+    try:
+        import cbor2  # type: ignore
+    except ImportError as e:  # pragma: no cover
+        raise RuntimeError(
+            "unpack_his of cbor format requires the 'cbor2' package."
+        ) from e
+    blob = _b64.b64decode(packed["d"])
+    if hashlib.sha256(blob).hexdigest() != packed["s"]:
+        raise ValueError("_his cbor blob hash mismatch (tampered or corrupt)")
+    return _his_unpack_cols(cbor2.loads(blob))
+
+
+def pack_his(doc: Dict[str, Any], fmt: str = "cols") -> Dict[str, Any]:
+    """Return a *copy* of ``doc`` with ``_his`` re-encoded for storage.
+
+    Parameters
+    ----------
+    doc : dict
+        A managed document with the schemaV-3 dict-of-dicts ``_his``.
+    fmt : {'cols', 'cbor'}
+        Wire format. ``'cols'`` is pure JSON columnar; ``'cbor'`` is a
+        base64-wrapped CBOR blob with an integrity sha256.
+
+    Adds a ``_hisF`` marker so ``unpack_his`` can sniff the format.
+    """
+    if fmt not in ("cols", "cbor"):
+        raise ValueError(f"unknown pack_his fmt: {fmt!r}")
+    out = copy.deepcopy(doc)
+    his = out.get("_his") or {}
+    if fmt == "cols":
+        out["_his"] = _his_pack_cols(his)
+        out["_hisF"] = "c"
+    else:  # cbor
+        out["_his"] = _his_pack_cbor(his)
+        out["_hisF"] = "b"
+    return out
+
+
+def unpack_his(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Return a *copy* of ``doc`` with ``_his`` restored to dict-of-dicts.
+
+    No-op when ``_hisF`` is absent (doc is already unpacked).
+    """
+    fmt = doc.get("_hisF")
+    if fmt is None:
+        return doc
+    out = copy.deepcopy(doc)
+    packed = out.get("_his") or {}
+    if fmt == "c":
+        out["_his"] = _his_unpack_cols(packed)
+    elif fmt == "b":
+        out["_his"] = _his_unpack_cbor(packed)
+    else:
+        raise ValueError(f"unknown _hisF marker: {fmt!r}")
+    out.pop("_hisF", None)
+    return out

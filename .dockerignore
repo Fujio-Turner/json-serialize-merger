@@ -1,0 +1,23 @@
+# Keep Docker build contexts small + reproducible across all example_<lang>/
+# containers. Everything that is NOT either:
+#   - a shared asset (index.html, JsonMerge.js, example_data/, docs/, img/)
+#   - this language's source (example_python/, example_go/, …)
+# can safely be excluded.
+
+.git
+.gitignore
+.idea
+.vscode
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/.DS_Store
+**/node_modules
+
+# Per-language test scratch dirs — not needed in the runtime image.
+example_python/test-sample-json-data
+example_python/test_*.py
+example_python/bench_*.py

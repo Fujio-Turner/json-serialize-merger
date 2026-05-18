@@ -12,107 +12,130 @@
     pre.out { max-height: 480px; overflow: auto; }
     .tab-active { font-weight: 600; }
     .byte-badge { font-variant-numeric: tabular-nums; }
+    /* Story timeline: lines belonging to a top-level key that changed
+       since the previous step are wrapped in <span.story-hl>. */
+    .story-hl { background: rgba(250, 204, 21, 0.35); border-radius: 2px; display: inline-block; width: 100%; }
   </style>
 </head>
 <body class="min-h-screen bg-base-200">
 
-<!-- Navbar -->
-<div class="navbar bg-base-100 shadow-md sticky top-0 z-30">
-  <div class="flex-1">
-    <a class="btn btn-ghost text-xl">📦 json-serialize-merger</a>
-    <span class="badge badge-outline ml-2">browser playground</span>
-  </div>
-  <div class="flex-none gap-2">
-    <a class="btn btn-sm btn-ghost" href="./docs/DESIGN.md" target="_blank">DESIGN.md</a>
-    <a class="btn btn-sm btn-ghost" href="./README.md" target="_blank">README</a>
-    <select id="themePicker" class="select select-sm select-bordered">
-      <option selected>light</option><option>dim</option><option>dark</option>
-      <option>cupcake</option><option>cyberpunk</option><option>synthwave</option>
-      <option>night</option><option>dracula</option><option>corporate</option>
-    </select>
-  </div>
-</div>
+<!-- =============================================================
+     DaisyUI "drawer" layout — sidebar nav on the left, content on
+     the right. On lg+ the drawer is permanently open; on smaller
+     screens it collapses behind a hamburger.
+     ============================================================= -->
+<div class="drawer lg:drawer-open">
+  <input id="sidebar-toggle" type="checkbox" class="drawer-toggle" />
 
-<div class="container mx-auto p-6">
+  <!-- ====================== MAIN CONTENT ====================== -->
+  <div class="drawer-content flex flex-col">
 
-  <!-- Hero -->
-  <div class="hero bg-base-100 rounded-2xl shadow mb-6">
-    <div class="hero-content flex-col lg:flex-row">
-      <div class="text-left">
-        <h1 class="text-3xl font-bold">Field-level, timestamp-based JSON merge</h1>
-        <p class="py-2 max-w-2xl">
-          Try every operation in <code>JsonMerge.js</code> (the JS port of
-          <code>example_python/JsonMerge.py</code>). Load any sample from
-          <code>./example_data/</code>, edit the JSON, click a button.
-        </p>
-        <div class="flex flex-wrap gap-2 mt-2">
-          <span class="badge badge-primary">makeNewDoc</span>
-          <span class="badge badge-secondary">updateDoc</span>
-          <span class="badge badge-accent">mergeDocReq</span>
-          <span class="badge badge-info">blindMerge</span>
-          <span class="badge badge-warning">threeWayMerge</span>
-          <span class="badge badge-success">diff / patch</span>
-          <span class="badge badge-neutral">validate / history</span>
-        </div>
+    <!-- Compact sticky navbar (was the big hero before). -->
+    <div class="navbar bg-base-100 shadow-sm sticky top-0 z-30 min-h-12 px-3">
+      <div class="flex-none lg:hidden">
+        <label for="sidebar-toggle" class="btn btn-square btn-ghost btn-sm" aria-label="open menu">
+          <svg xmlns="http://www.w3.org/2000/svg" class="inline-block w-5 h-5 stroke-current" fill="none" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+        </label>
+      </div>
+      <div class="flex-1 lg:hidden">
+        <span class="font-semibold">📦 json-serialize-merger</span>
+      </div>
+      <div class="flex-1 hidden lg:block">
+        <span id="active-section-title" class="font-semibold opacity-80">makeNewDoc</span>
+      </div>
+      <div class="flex-none gap-1">
+        <a class="btn btn-xs btn-ghost" href="./docs/DESIGN.md" target="_blank">DESIGN</a>
+        <a class="btn btn-xs btn-ghost" href="./README.md" target="_blank">README</a>
+        <a class="btn btn-xs btn-ghost" href="./docs/API.md" target="_blank">API</a>
+        <select id="themePicker" class="select select-bordered select-xs">
+          <option selected>light</option><option>dim</option><option>dark</option>
+          <option>cupcake</option><option>cyberpunk</option><option>synthwave</option>
+          <option>night</option><option>dracula</option><option>corporate</option>
+        </select>
       </div>
     </div>
-  </div>
 
-  <!-- Config / flags -->
-  <div class="card bg-base-100 shadow mb-6">
+    <!-- Sections live in this main container.
+         Only one section is visible at a time (toggled by sidebar). -->
+    <main class="container mx-auto p-4 lg:p-6 max-w-6xl w-full">
+
+  <!-- ====== Diagrams ====== -->
+  <!-- Visual reference for the merge semantics. The SVGs live in /img and
+       are served as static assets both standalone (python3 -m http.server)
+       and inside the Docker container (server.py mounts /img). -->
+  <section data-panel="diag" class="card bg-base-100 shadow hidden">
     <div class="card-body">
-      <div class="flex flex-wrap items-center gap-6">
-        <h2 class="card-title">JSONMERGE flags</h2>
+      <h2 class="card-title">Diagrams — what happens under the hood</h2>
+      <p class="text-sm opacity-80">
+        Four small SVGs that map the playground's operations to the
+        underlying field-level, timestamp-based conflict-resolution
+        model. Click any image to open it full-size.
+      </p>
 
-        <div class="tooltip tooltip-bottom" data-tip="Clamp any leaf whose path ends in 'qty' to >= 0 after every merge. Inventory-safe: a negative quantity becomes 0 instead of going below zero.">
-          <label class="label cursor-pointer gap-2">
-            <span class="label-text">qtyMath</span>
-            <input id="cfg-qtyMath" type="checkbox" class="toggle toggle-primary" checked />
-          </label>
-        </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
 
-        <div class="tooltip tooltip-bottom" data-tip="Store a short content hash 'h' (first 8 hex of SHA-256) per field inside _his. Used by validate() to detect drift or out-of-band edits.">
-          <label class="label cursor-pointer gap-2">
-            <span class="label-text">addHashes</span>
-            <input id="cfg-addHashes" type="checkbox" class="toggle toggle-primary" checked />
-          </label>
-        </div>
+        <figure class="card bg-base-200">
+          <div class="card-body p-3">
+            <h3 class="font-semibold">① Overview</h3>
+            <p class="text-xs opacity-70 mb-2">
+              Two offline replicas of the same logical document are merged
+              into a single time-correct result, field by field.
+            </p>
+            <a href="img/overview.svg" target="_blank">
+              <img src="img/overview.svg" alt="Overview: two replicas merged into a time-correct document"
+                   class="w-full rounded bg-white" loading="lazy"/>
+            </a>
+          </div>
+        </figure>
 
-        <div class="tooltip tooltip-bottom" data-tip="Write the document-creation epoch ('crDtEp') when makeNewDoc() stamps a plain doc. Disable if you don't want a creation timestamp.">
-          <label class="label cursor-pointer gap-2">
-            <span class="label-text">addCrEp</span>
-            <input id="cfg-addCrEp" type="checkbox" class="toggle toggle-primary" checked />
-          </label>
-        </div>
+        <figure class="card bg-base-200">
+          <div class="card-body p-3">
+            <h3 class="font-semibold">② <code>_his</code> sidecar</h3>
+            <p class="text-xs opacity-70 mb-2">
+              Anatomy of the bookkeeping sidecar: every path — nested
+              objects and array indices included — gets a <code>{t,h}</code>
+              record (epoch timestamp + short content hash).
+            </p>
+            <a href="img/his-sidecar.svg" target="_blank">
+              <img src="img/his-sidecar.svg" alt="Anatomy of the _his sidecar"
+                   class="w-full rounded bg-white" loading="lazy"/>
+            </a>
+          </div>
+        </figure>
 
-        <div class="tooltip tooltip-bottom" data-tip="Also write a human-readable ISO-8601 creation date ('crDt') on makeNewDoc(), in addition to crDtEp.">
-          <label class="label cursor-pointer gap-2">
-            <span class="label-text">addCrIso</span>
-            <input id="cfg-addCrIso" type="checkbox" class="toggle" />
-          </label>
-        </div>
+        <figure class="card bg-base-200">
+          <div class="card-body p-3">
+            <h3 class="font-semibold">③ blindMerge</h3>
+            <p class="text-xs opacity-70 mb-2">
+              Symmetric reconcile of two copies of the same logical doc.
+              For each path the newer per-field timestamp wins,
+              independently from every other path.
+            </p>
+            <a href="img/blind-merge.svg" target="_blank">
+              <img src="img/blind-merge.svg" alt="blindMerge: newer per-field timestamp wins"
+                   class="w-full rounded bg-white" loading="lazy"/>
+            </a>
+          </div>
+        </figure>
 
-        <div class="tooltip tooltip-bottom" data-tip="Also write a human-readable ISO-8601 last-updated date ('upDt') every time the doc is updated/merged, in addition to upDtEp.">
-          <label class="label cursor-pointer gap-2">
-            <span class="label-text">addUpIso</span>
-            <input id="cfg-addUpIso" type="checkbox" class="toggle" />
-          </label>
-        </div>
+        <figure class="card bg-base-200">
+          <div class="card-body p-3">
+            <h3 class="font-semibold">④ threeWayMerge</h3>
+            <p class="text-xs opacity-70 mb-2">
+              Git-style merge: <code>base</code>, <code>ours</code>,
+              <code>theirs</code>. Reports the conflicting paths but still
+              auto-resolves each one by newer timestamp.
+            </p>
+            <a href="img/three-way-merge.svg" target="_blank">
+              <img src="img/three-way-merge.svg" alt="threeWayMerge: base / ours / theirs"
+                   class="w-full rounded bg-white" loading="lazy"/>
+            </a>
+          </div>
+        </figure>
 
       </div>
     </div>
-  </div>
-
-  <!-- Tabs -->
-  <div role="tablist" class="tabs tabs-boxed mb-4 bg-base-100">
-    <a role="tab" data-tab="make"   class="tab tab-active">1. makeNewDoc</a>
-    <a role="tab" data-tab="update" class="tab">2. updateDoc</a>
-    <a role="tab" data-tab="req"    class="tab">3. mergeDocReq</a>
-    <a role="tab" data-tab="blind"  class="tab">4. blindMerge</a>
-    <a role="tab" data-tab="three"  class="tab">5. threeWayMerge</a>
-    <a role="tab" data-tab="diff"   class="tab">6. diff / patch</a>
-    <a role="tab" data-tab="insp"   class="tab">7. validate / history</a>
-  </div>
+  </section>
 
   <!-- ====== makeNewDoc ====== -->
   <section data-panel="make" class="card bg-base-100 shadow">
@@ -339,15 +362,468 @@
     </div>
   </section>
 
-  <!-- Toast -->
-  <div id="toast-host" class="toast toast-end"></div>
+  <!-- ====== Document over time (story) ====== -->
+  <!-- Panels 1–7 each demonstrate ONE operation in isolation. This
+       panel ties them together: a single invoice walks through every
+       operation on a daisyUI vertical timeline so you can see how the
+       document (and its `_his` sidecar) evolves over real "wall time".
+       Each step temporarily advances Date.now() so `_his[*].t` actually
+       progresses — otherwise every entry would share the same epoch. -->
+  <section data-panel="story" class="card bg-base-100 shadow hidden">
+    <div class="card-body">
+      <h2 class="card-title">
+        Document over time — one invoice through every operation
+        <span class="badge badge-success badge-outline">end-to-end demo</span>
+      </h2>
+      <p class="text-sm opacity-80">
+        A single <code>invoice</code> doc is created, edited, merged from a
+        partial back-office update, reconciled with an offline mobile
+        replica, three-way-merged across two concurrent editors, diffed
+        &amp; patched, and finally inspected. The clock advances one day
+        between steps so the per-field timestamps in <code>_his</code>
+        tell the real story.
+      </p>
 
-  <footer class="footer footer-center mt-10 p-6 text-sm opacity-70">
-    <aside>
-      <p>powered by <code>JsonMerge.js</code> + <a class="link" href="https://daisyui.com/components/">DaisyUI</a> · sample data in <code>./example_data/</code></p>
-    </aside>
-  </footer>
-</div>
+      <div class="card-actions mt-3">
+        <button id="btn-story-run"   class="btn btn-primary">▶ Run demo</button>
+        <button id="btn-story-reset" class="btn btn-ghost">Reset</button>
+        <span id="story-status" class="badge badge-ghost self-center">not run</span>
+      </div>
+
+      <!-- daisyUI vertical timeline with colored hr separators between
+           steps. Boxes alternate start/end for the zig-zag look. -->
+      <ul class="timeline timeline-vertical mt-4">
+
+        <!-- Step 1 -->
+        <li>
+          <div class="timeline-middle">
+            <div class="badge badge-primary badge-lg">1</div>
+          </div>
+          <div class="timeline-start mb-6 md:text-end timeline-box max-w-full">
+            <time class="font-mono italic text-xs opacity-70" id="story-t-1">day 0</time>
+            <div class="text-lg font-bold">makeNewDoc</div>
+            <p class="text-sm opacity-80">Bob creates a fresh invoice. The library stamps every field with the current epoch &amp; a content hash.</p>
+            <code class="text-xs block text-left mt-1">makeNewDoc({docType:"invoice", name:"Bob Smith", qty:5, ...})</code>
+            <pre id="story-out-1" class="out json-area p-2 bg-base-200 rounded mt-2 text-xs text-left">(click ▶ Run demo)</pre>
+          </div>
+          <hr class="bg-primary"/>
+        </li>
+
+        <!-- Step 2 -->
+        <li>
+          <hr class="bg-primary"/>
+          <div class="timeline-middle">
+            <div class="badge badge-secondary badge-lg">2</div>
+          </div>
+          <div class="timeline-end mb-6 timeline-box max-w-full">
+            <time class="font-mono italic text-xs opacity-70" id="story-t-2">day 1</time>
+            <div class="text-lg font-bold">updateDoc</div>
+            <p class="text-sm opacity-80">Next day Bob fixes a city typo and adds a tag — only the touched paths get new <code>t</code>s.</p>
+            <code class="text-xs block text-left mt-1">updateDoc(doc, [{"address.city":"Lake Falls West"}, {"tags[1]":"net30"}])</code>
+            <pre id="story-out-2" class="out json-area p-2 bg-base-200 rounded mt-2 text-xs text-left"></pre>
+          </div>
+          <hr class="bg-secondary"/>
+        </li>
+
+        <!-- Step 3 -->
+        <li>
+          <hr class="bg-secondary"/>
+          <div class="timeline-middle">
+            <div class="badge badge-accent badge-lg">3</div>
+          </div>
+          <div class="timeline-start mb-6 md:text-end timeline-box max-w-full">
+            <time class="font-mono italic text-xs opacity-70" id="story-t-3">day 2</time>
+            <div class="text-lg font-bold">mergeDocReq</div>
+            <p class="text-sm opacity-80">Back-office posts a partial <code>invoiceUpdate</code> doc with a different <code>docType</code> — paid=true and a qty bump.</p>
+            <code class="text-xs block text-left mt-1">mergeDocReq(invoice, invoiceUpdate)</code>
+            <pre id="story-out-3" class="out json-area p-2 bg-base-200 rounded mt-2 text-xs text-left"></pre>
+          </div>
+          <hr class="bg-accent"/>
+        </li>
+
+        <!-- Step 4 -->
+        <li>
+          <hr class="bg-accent"/>
+          <div class="timeline-middle">
+            <div class="badge badge-info badge-lg">4</div>
+          </div>
+          <div class="timeline-end mb-6 timeline-box max-w-full">
+            <time class="font-mono italic text-xs opacity-70" id="story-t-4">day 3</time>
+            <div class="text-lg font-bold">blindMerge</div>
+            <p class="text-sm opacity-80">Bob's offline mobile (still had <code>qty=5</code>, but edited <code>address.city</code> yesterday) comes back online — symmetric per-field reconcile.</p>
+            <code class="text-xs block text-left mt-1">blindMerge(server, mobile)</code>
+            <pre id="story-out-4" class="out json-area p-2 bg-base-200 rounded mt-2 text-xs text-left"></pre>
+          </div>
+          <hr class="bg-info"/>
+        </li>
+
+        <!-- Step 5 -->
+        <li>
+          <hr class="bg-info"/>
+          <div class="timeline-middle">
+            <div class="badge badge-success badge-lg">5</div>
+          </div>
+          <div class="timeline-start mb-6 md:text-end timeline-box max-w-full">
+            <time class="font-mono italic text-xs opacity-70" id="story-t-5">day 4</time>
+            <div class="text-lg font-bold">threeWayMerge</div>
+            <p class="text-sm opacity-80">Two users edit the same <code>base</code> offline; <em>ours</em> changes <code>qty</code>, <em>theirs</em> changes <code>address.city</code> — one conflict, auto-resolved by newer timestamp.</p>
+            <code class="text-xs block text-left mt-1">threeWayMerge(base, ours, theirs) → {merged, conflicts}</code>
+            <pre id="story-out-5" class="out json-area p-2 bg-base-200 rounded mt-2 text-xs text-left"></pre>
+          </div>
+          <hr class="bg-success"/>
+        </li>
+
+        <!-- Step 6 -->
+        <li>
+          <hr class="bg-success"/>
+          <div class="timeline-middle">
+            <div class="badge badge-warning badge-lg">6</div>
+          </div>
+          <div class="timeline-end mb-6 timeline-box max-w-full">
+            <time class="font-mono italic text-xs opacity-70" id="story-t-6">day 5</time>
+            <div class="text-lg font-bold">diffDocs &amp; patchDoc</div>
+            <p class="text-sm opacity-80">Compute an RFC-6902 JSON Patch between the day-0 snapshot and the current doc, then apply it to a fresh copy to prove round-trip.</p>
+            <code class="text-xs block text-left mt-1">patchDoc(snapshot, diffDocs(snapshot, current))</code>
+            <pre id="story-out-6" class="out json-area p-2 bg-base-200 rounded mt-2 text-xs text-left"></pre>
+          </div>
+          <hr class="bg-warning"/>
+        </li>
+
+        <!-- Step 7 -->
+        <li>
+          <hr class="bg-warning"/>
+          <div class="timeline-middle">
+            <div class="badge badge-error badge-lg">7</div>
+          </div>
+          <div class="timeline-start md:text-end timeline-box max-w-full">
+            <time class="font-mono italic text-xs opacity-70" id="story-t-7">day 6</time>
+            <div class="text-lg font-bold">validate &amp; historyIso</div>
+            <p class="text-sm opacity-80">Inspect the result: validate the sidecar and pretty-print every field's edit history with ISO timestamps.</p>
+            <code class="text-xs block text-left mt-1">{validate(doc), historyIso(doc)}</code>
+            <pre id="story-out-7" class="out json-area p-2 bg-base-200 rounded mt-2 text-xs text-left"></pre>
+          </div>
+        </li>
+
+      </ul>
+    </div>
+  </section>
+
+  <!-- ====== pack / unpack ====== -->
+  <section data-panel="pack" class="card bg-base-100 shadow hidden">
+    <div class="card-body">
+      <h2 class="card-title">
+        pack_his(doc, fmt) · unpack_his(doc)
+        <span class="badge badge-success badge-outline">schemaV 3</span>
+      </h2>
+      <p class="text-sm opacity-80">
+        <code>_his</code> is library-only metadata. Pick how you want it
+        serialized for storage — the library auto-detects the format on
+        every call (<code>updateDoc</code>, <code>blindMerge</code>, …) so
+        you can go back and forth freely between <b>JSON</b> and
+        <b>binary</b>.
+      </p>
+
+      <!-- Input + controls --------------------------------------------------->
+      <div class="flex flex-wrap items-center gap-2 mt-3">
+        <button id="btn-pack-run" class="btn btn-primary btn-sm">Pack / refresh ↻</button>
+        <button id="btn-pack-roundtrip" class="btn btn-sm">Round-trip check</button>
+        <span class="divider divider-horizontal mx-0"></span>
+        <button class="btn btn-sm" data-load="pack-input" data-file="example_data/05-managed-invoice.json">Load: managed invoice</button>
+        <button class="btn btn-sm" data-load="pack-input" data-file="example_data/02-nested-plain-invoice.json">Load: nested (will be stamped)</button>
+      </div>
+
+      <div class="mt-3">
+        <div class="label"><span class="label-text font-semibold">Input doc (plain or already-managed)</span></div>
+        <textarea id="pack-input" class="textarea textarea-bordered w-full json-area" rows="10" placeholder="paste a JSON doc here, or click a Load: button"></textarea>
+      </div>
+
+      <!-- Three formats shown side-by-side so JSON vs binary is obvious. ------>
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mt-4">
+
+        <div class="border border-base-300 rounded-lg p-3 bg-base-200">
+          <div class="flex items-center justify-between mb-1">
+            <h3 class="font-semibold">① dict (default JSON)</h3>
+            <span id="pack-size-dict" class="badge badge-ghost">—</span>
+          </div>
+          <p class="text-xs opacity-70 mb-2">In-memory canonical: <code>_his[path] = {t,h}</code>, no value duplication.</p>
+          <pre id="pack-out-dict" class="out json-area p-2 bg-base-100 rounded text-xs" style="max-height:340px"></pre>
+        </div>
+
+        <div class="border border-base-300 rounded-lg p-3 bg-base-200">
+          <div class="flex items-center justify-between mb-1">
+            <h3 class="font-semibold">② cols (columnar JSON)</h3>
+            <span id="pack-size-cols" class="badge badge-ghost">—</span>
+          </div>
+          <p class="text-xs opacity-70 mb-2">Columnar JSON. <code>_hisF:"c"</code>; <code>_his = {p:[…], t:[…], h:[…]}</code>.</p>
+          <pre id="pack-out-cols" class="out json-area p-2 bg-base-100 rounded text-xs" style="max-height:340px"></pre>
+        </div>
+
+        <div class="border border-base-300 rounded-lg p-3 bg-base-200">
+          <div class="flex items-center justify-between mb-1">
+            <h3 class="font-semibold">③ cbor (binary blob)</h3>
+            <span id="pack-size-cbor" class="badge badge-ghost">—</span>
+          </div>
+          <p class="text-xs opacity-70 mb-2">Binary blob. <code>_hisF:"b"</code>; <code>_his = {d:"&lt;base64&gt;", s:"&lt;hash&gt;"}</code>.</p>
+          <div class="tabs tabs-bordered tabs-xs mb-1">
+            <a class="tab tab-active" data-cbor-view="json">JSON wrapper</a>
+            <a class="tab" data-cbor-view="hex">raw bytes (hex)</a>
+          </div>
+          <pre id="pack-out-cbor"     class="out json-area p-2 bg-base-100 rounded text-xs" style="max-height:340px"></pre>
+          <pre id="pack-out-cbor-hex" class="out json-area p-2 bg-base-100 rounded text-xs hidden" style="max-height:340px"></pre>
+        </div>
+
+      </div>
+
+      <!-- Size comparison table ---------------------------------------------->
+      <div class="mt-4">
+        <h3 class="font-semibold mb-2">Wire size comparison</h3>
+        <div class="overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>Format</th>
+                <th>Bytes (JSON-stringified)</th>
+                <th>vs raw user payload</th>
+                <th>vs dict (default)</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="pack-size-tbody">
+              <tr><td colspan="5" class="opacity-60">Click <b>Pack / refresh</b> after loading a doc.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="alert alert-info mt-3 text-sm">
+        <span>
+          Tip: copy any pane's output into another tab (e.g. <b>updateDoc</b>
+          or <b>blindMerge</b>). The library auto-detects <code>_hisF</code>
+          and unpacks transparently, so a packed doc is a valid input
+          anywhere.
+        </span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== API (live server) ====== -->
+  <section data-panel="api" class="card bg-base-100 shadow hidden">
+    <div class="card-body">
+      <h2 class="card-title">
+        Live API — <code>example_python/server.py</code>
+        <span class="badge badge-info badge-outline">FastAPI · OpenAPI 3.1</span>
+      </h2>
+      <p class="text-sm opacity-80">
+        The same JsonMerge operations exposed over HTTP. Every endpoint
+        validates its input and returns <b>every</b> problem at once in a
+        standard error envelope — no "first error wins" cascade. Spec
+        follows
+        <a class="link" href="./docs/guides/APOLLO_API_OPENAPI.md" target="_blank">APOLLO_API_OPENAPI.md</a>;
+        full schema lives at
+        <a class="link" href="./docs/openapi.yaml" target="_blank">docs/openapi.yaml</a>.
+      </p>
+
+      <div class="flex flex-wrap items-center gap-2 mt-3">
+        <label class="label-text">Base URL</label>
+        <input id="api-base" class="input input-bordered input-sm w-72" value="http://localhost:9090" />
+        <button id="btn-api-ping" class="btn btn-sm btn-primary">Ping /api/version</button>
+        <span id="api-status" class="badge badge-ghost">unchecked</span>
+        <a class="btn btn-sm btn-ghost" href="http://localhost:9090/docs" target="_blank">Swagger UI ↗</a>
+        <a class="btn btn-sm btn-ghost" href="http://localhost:9090/openapi.yaml" target="_blank">openapi.yaml ↗</a>
+      </div>
+
+      <div class="alert alert-warning mt-3 text-sm">
+        <span>
+          Start the server first:
+          <code>pip install fastapi uvicorn cbor2</code> then
+          <code>python3 example_python/server.py</code>. The page is
+          usually served from a different origin
+          (<code>python3 -m http.server</code>) so the server allows CORS
+          from any origin in development.
+        </span>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+        <div>
+          <div class="label">
+            <span class="label-text font-semibold">Endpoint</span>
+          </div>
+          <select id="api-endpoint" class="select select-bordered select-sm w-full">
+            <option value="/api/make-new-doc">POST /api/make-new-doc</option>
+            <option value="/api/update-doc">POST /api/update-doc</option>
+            <option value="/api/diff">POST /api/diff</option>
+            <option value="/api/patch">POST /api/patch</option>
+            <option value="/api/merge-doc-request">POST /api/merge-doc-request</option>
+            <option value="/api/blind-merge">POST /api/blind-merge</option>
+            <option value="/api/three-way-merge">POST /api/three-way-merge</option>
+            <option value="/api/pack-his">POST /api/pack-his</option>
+            <option value="/api/unpack-his">POST /api/unpack-his</option>
+            <option value="/api/validate">POST /api/validate</option>
+          </select>
+
+          <div class="flex flex-wrap gap-2 mt-2 mb-1">
+            <button class="btn btn-xs" data-api-preset="happy">Load: happy path</button>
+            <button class="btn btn-xs btn-warning" data-api-preset="multi-error">Load: multi-error demo</button>
+          </div>
+
+          <div class="label"><span class="label-text font-semibold">Request body (JSON)</span></div>
+          <textarea id="api-body" class="textarea textarea-bordered w-full json-area" rows="14" placeholder='{ "doc": { ... } }'></textarea>
+
+          <div class="card-actions mt-2">
+            <button id="btn-api-send" class="btn btn-primary btn-sm">Send request</button>
+          </div>
+        </div>
+
+        <div>
+          <div class="label">
+            <span class="label-text font-semibold">Response</span>
+            <span id="api-status-badge" class="label-text-alt badge badge-ghost">—</span>
+          </div>
+          <pre id="api-response" class="out json-area p-3 bg-base-200 rounded-lg"></pre>
+
+          <!-- Decoded issues table — only rendered when the response has
+               an array `detail` (multi-error shape). -->
+          <div id="api-issues-wrap" class="mt-3 hidden">
+            <div class="label">
+              <span class="label-text font-semibold text-error">Issues</span>
+              <span class="label-text-alt opacity-70">Apollo-spec multi-issue body</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="table table-xs">
+                <thead><tr><th>loc</th><th>code</th><th>msg</th></tr></thead>
+                <tbody id="api-issues-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+      <footer class="footer footer-center mt-10 p-6 text-sm opacity-70">
+        <aside>
+          <p>powered by <code>JsonMerge.js</code> + <a class="link" href="https://daisyui.com/components/">DaisyUI</a> · sample data in <code>./example_data/</code></p>
+        </aside>
+      </footer>
+
+    </main>
+
+    <!-- Toast lives at root of drawer-content so it floats over everything. -->
+    <div id="toast-host" class="toast toast-end"></div>
+
+  </div><!-- /drawer-content -->
+
+  <!-- ====================== SIDEBAR ====================== -->
+  <aside class="drawer-side z-40">
+    <label for="sidebar-toggle" class="drawer-overlay" aria-label="close menu"></label>
+
+    <div class="bg-base-100 w-64 min-h-full border-r border-base-300 flex flex-col">
+
+      <!-- Sidebar header -->
+      <div class="px-4 py-3 border-b border-base-300">
+        <div class="font-bold text-base">📦 json-serialize-merger</div>
+        <div class="text-xs opacity-60 mt-0.5">field-level JSON merge</div>
+        <div class="flex gap-1 mt-2">
+          <span class="badge badge-outline badge-xs">schemaV 3</span>
+        </div>
+      </div>
+
+      <!-- Navigation. Uses .menu .active for daisyUI's built-in highlight.
+           data-tab attributes drive the panel-toggle JS. -->
+      <ul class="menu menu-sm p-2 gap-0.5">
+        <li class="menu-title text-xs pt-1 pb-0">Reference</li>
+        <li>
+          <a data-tab="diag" class="justify-between">
+            🖼 Diagrams
+            <span class="badge badge-xs badge-info">visual</span>
+          </a>
+        </li>
+        <li class="menu-title text-xs mt-2 pb-0">Operations</li>
+        <li><a data-tab="make"   class="active">1. makeNewDoc</a></li>
+        <li><a data-tab="update">2. updateDoc</a></li>
+        <li><a data-tab="req">3. mergeDocReq</a></li>
+        <li><a data-tab="blind">4. blindMerge</a></li>
+        <li><a data-tab="three">5. threeWayMerge</a></li>
+        <li><a data-tab="diff">6. diff / patch</a></li>
+        <li><a data-tab="insp">7. validate / history</a></li>
+
+        <li class="menu-title text-xs mt-2 pb-0">End-to-end</li>
+        <li>
+          <a data-tab="story" class="justify-between">
+            8. Document over time
+            <span class="badge badge-xs badge-success">demo</span>
+          </a>
+        </li>
+
+        <li class="menu-title text-xs mt-2 pb-0">Storage format</li>
+        <li>
+          <a data-tab="pack" class="justify-between">
+            9. pack / unpack
+            <span class="badge badge-xs badge-success">new</span>
+          </a>
+        </li>
+
+        <li class="menu-title text-xs mt-2 pb-0">Server</li>
+        <li>
+          <a data-tab="api" class="justify-between">
+            10. API (live)
+            <span class="badge badge-xs badge-info">new</span>
+          </a>
+        </li>
+      </ul>
+
+      <!-- JSONMERGE flags collapsed into the sidebar footer. -->
+      <div class="mt-auto border-t border-base-300">
+        <div tabindex="0" class="collapse collapse-arrow rounded-none">
+          <input type="checkbox" />
+          <div class="collapse-title text-sm font-semibold py-3 min-h-0">
+            ⚙ JSONMERGE flags
+          </div>
+          <div class="collapse-content text-xs space-y-2 pb-3">
+
+            <div class="tooltip tooltip-right" data-tip="Clamp '...qty' leaves to >= 0 after every merge.">
+              <label class="label cursor-pointer gap-2 py-1">
+                <span class="label-text">qtyMath</span>
+                <input id="cfg-qtyMath" type="checkbox" class="toggle toggle-primary toggle-xs" checked />
+              </label>
+            </div>
+
+            <div class="tooltip tooltip-right" data-tip="Store a short content hash per field (used by validate()).">
+              <label class="label cursor-pointer gap-2 py-1">
+                <span class="label-text">addHashes</span>
+                <input id="cfg-addHashes" type="checkbox" class="toggle toggle-primary toggle-xs" checked />
+              </label>
+            </div>
+
+            <div class="tooltip tooltip-right" data-tip="Write crDtEp on makeNewDoc().">
+              <label class="label cursor-pointer gap-2 py-1">
+                <span class="label-text">addCrEp</span>
+                <input id="cfg-addCrEp" type="checkbox" class="toggle toggle-primary toggle-xs" checked />
+              </label>
+            </div>
+
+            <div class="tooltip tooltip-right" data-tip="Also write crDt (ISO-8601) on makeNewDoc().">
+              <label class="label cursor-pointer gap-2 py-1">
+                <span class="label-text">addCrIso</span>
+                <input id="cfg-addCrIso" type="checkbox" class="toggle toggle-xs" />
+              </label>
+            </div>
+
+            <div class="tooltip tooltip-right" data-tip="Also write upDt (ISO-8601) on every update / merge.">
+              <label class="label cursor-pointer gap-2 py-1">
+                <span class="label-text">addUpIso</span>
+                <input id="cfg-addUpIso" type="checkbox" class="toggle toggle-xs" />
+              </label>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+
+</div><!-- /drawer -->
 
 <script>
 (function () {
@@ -358,15 +834,42 @@
     document.documentElement.setAttribute("data-theme", e.target.value);
   });
 
-  // ---- tabs ----
-  document.querySelectorAll('[role=tab]').forEach(tab => {
-    tab.addEventListener("click", () => {
-      document.querySelectorAll('[role=tab]').forEach(t => t.classList.remove("tab-active"));
-      tab.classList.add("tab-active");
-      const target = tab.dataset.tab;
-      document.querySelectorAll('section[data-panel]').forEach(s => {
-        s.classList.toggle("hidden", s.dataset.panel !== target);
-      });
+  // ---- sidebar nav (was horizontal tabs) ----
+  // Activates the matching section[data-panel="..."], highlights the
+  // sidebar link, updates the navbar title and (on mobile) closes the
+  // drawer.
+  const sidebarToggle = $("sidebar-toggle");
+  const navTitle      = $("active-section-title");
+  const titleByTab    = {
+    diag:   "🖼 Diagrams",
+    make:   "1. makeNewDoc",
+    update: "2. updateDoc",
+    req:    "3. mergeDocReq",
+    blind:  "4. blindMerge",
+    three:  "5. threeWayMerge",
+    diff:   "6. diff / patch",
+    insp:   "7. validate / history",
+    story:  "8. Document over time",
+    pack:   "9. pack / unpack",
+    api:    "10. API (live server)",
+  };
+  function activateTab(target) {
+    document.querySelectorAll('[data-tab]').forEach(t => t.classList.remove("active"));
+    const link = document.querySelector(`[data-tab="${target}"]`);
+    if (link) link.classList.add("active");
+    document.querySelectorAll('section[data-panel]').forEach(s => {
+      s.classList.toggle("hidden", s.dataset.panel !== target);
+    });
+    if (navTitle && titleByTab[target]) navTitle.textContent = titleByTab[target];
+    // Close drawer on mobile after a selection.
+    if (sidebarToggle && window.matchMedia("(max-width: 1023.98px)").matches) {
+      sidebarToggle.checked = false;
+    }
+  }
+  document.querySelectorAll('[data-tab]').forEach(link => {
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      activateTab(link.dataset.tab);
     });
   });
 
@@ -563,6 +1066,539 @@
     const ep = parseInt($("insp-since").value, 10);
     show("insp-output", makeMerger().listChangesSince(parseJsonOr("insp-doc"), ep));
   });
+
+  // ---- 8. Document over time (story timeline) --------------------------
+  // Walks ONE invoice through every operation, advancing the clock 1 day
+  // between steps so the per-field `_his[*].t` values progress
+  // realistically. JsonMerge.js takes its epoch from Date.now() — we
+  // temporarily replace that to "set the wall clock" per step.
+  const STORY_BASE_EP   = 1700000000;       // fixed Nov-14-2023 anchor for reproducible output
+  const STORY_DAY       = 24 * 3600;
+  const STORY_REAL_NOW  = Date.now.bind(Date);
+
+  function storySetClock(stepDays, hourOffset = 0) {
+    const ep = STORY_BASE_EP + stepDays * STORY_DAY + hourOffset * 3600;
+    Date.now = () => ep * 1000;
+    return ep;
+  }
+  function storyResetClock() { Date.now = STORY_REAL_NOW; }
+  function storyFmtDate(ep)   { return new Date(ep * 1000).toISOString().replace("T", " ").slice(0, 19) + "Z"; }
+  // Replace target's contents with src's. Safe when src === target
+  // (some library calls — mergeDocReq, updateDoc — return the same
+  //  reference they mutated, so a blind delete+assign would wipe them).
+  function storyAdopt(target, src) {
+    if (src === target) return;
+    for (const k of Object.keys(target)) delete target[k];
+    Object.assign(target, src);
+  }
+  function storyEscape(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  // Compare two docs and return the set of top-level keys whose JSON
+  // representation differs. Used to drive line-level highlighting.
+  function storyChangedKeys(curr, prev) {
+    const changed = new Set();
+    const keys = new Set([...Object.keys(curr || {}), ...Object.keys(prev || {})]);
+    for (const k of keys) {
+      if (JSON.stringify((curr || {})[k]) !== JSON.stringify((prev || {})[k])) {
+        changed.add(k);
+      }
+    }
+    return changed;
+  }
+  // Pretty-print `curr` as JSON; lines belonging to a top-level key that
+  // changed vs `prev` are wrapped in <span class="story-hl"> for the
+  // yellow strip-highlight. Falls back to plain text if no prev.
+  function storyRender(curr, prev) {
+    const text  = JSON.stringify(curr, null, 2);
+    if (!prev) return storyEscape(text);
+    const changed = storyChangedKeys(curr, prev);
+    if (!changed.size) return storyEscape(text);
+    const lines = text.split("\n");
+    const out   = [];
+    let inBlock = false, exitDepth = -1, depth = 0;
+    for (const line of lines) {
+      // Indent of exactly 2 spaces + a quoted key = top-level key boundary.
+      const m = /^  "([^"]+)":/.exec(line);
+      if (m && changed.has(m[1]) && !inBlock) { inBlock = true; exitDepth = depth; }
+      const esc = storyEscape(line);
+      out.push(inBlock ? `<span class="story-hl">${esc || " "}</span>` : esc);
+      for (const ch of line) {
+        if (ch === "{" || ch === "[") depth++;
+        else if (ch === "}" || ch === "]") depth--;
+      }
+      if (inBlock && depth <= exitDepth) inBlock = false;
+    }
+    return out.join("\n");
+  }
+  // Renders a step's output. If `prevDoc` is given the document is
+  // diff-highlighted against it; otherwise plain JSON. `prefix` is
+  // optional text drawn above the doc (e.g. a "conflicts: [...]" line).
+  function storyShow(stepIdx, obj, prevDoc, prefix) {
+    const el = $(`story-out-${stepIdx}`);
+    if (typeof obj === "string") { el.textContent = obj; return; }
+    const head = prefix ? storyEscape(prefix) + "\n" : "";
+    if (prevDoc) el.innerHTML = head + storyRender(obj, prevDoc);
+    else if (prefix) el.innerHTML = head + storyEscape(JSON.stringify(obj, null, 2));
+    else el.textContent = JSON.stringify(obj, null, 2);
+  }
+  function storyClear() {
+    for (let i = 1; i <= 7; i++) {
+      $(`story-out-${i}`).textContent = i === 1 ? "(click ▶ Run demo)" : "";
+      $(`story-t-${i}`).textContent   = `day ${i - 1}`;
+    }
+    $("story-status").textContent = "not run";
+    $("story-status").className   = "badge badge-ghost self-center";
+  }
+
+  function runStoryDemo() {
+    const m = makeMerger();
+    try {
+      // ---- Step 1: makeNewDoc (day 0) -------------------------------
+      const ep1 = storySetClock(0);
+      $("story-t-1").textContent = `day 0 — ${storyFmtDate(ep1)}`;
+      const invoice = m.makeNewDoc({
+        docType: "invoice",
+        name: "Bob Smith",
+        qty: 5,
+        address: { city: "Lak Falls", zip: "10001" },
+        tags: ["vip"],
+      });
+      storyShow(1, invoice);                                   // no prev → plain
+      let prev = JSON.parse(JSON.stringify(invoice));
+
+      // ---- Step 2: updateDoc (day 1) --------------------------------
+      const ep2 = storySetClock(1);
+      $("story-t-2").textContent = `day 1 — ${storyFmtDate(ep2)}`;
+      m.updateDoc(invoice, [
+        { "address.city": "Lake Falls" },   // fix typo
+        { "tags[1]": "net30" },              // add tag
+      ]);
+      storyShow(2, invoice, prev);                             // diff vs step 1
+      prev = JSON.parse(JSON.stringify(invoice));
+
+      // ---- Step 3: mergeDocReq (day 2) ------------------------------
+      const ep3 = storySetClock(2);
+      $("story-t-3").textContent = `day 2 — ${storyFmtDate(ep3)}`;
+      const invoiceUpdate = m.makeNewDoc({
+        docType: "invoiceUpdate",
+        paid: true,
+        qty: 7,            // back-office bumped qty
+      });
+      storyAdopt(invoice, m.mergeDocReq(invoice, invoiceUpdate));
+      storyShow(3, invoice, prev);                             // diff vs step 2
+      prev = JSON.parse(JSON.stringify(invoice));
+
+      // ---- Step 4: blindMerge with offline mobile (day 3) -----------
+      // The mobile replica was created from the day-1 snapshot but
+      // edited address.city offline 12h before reconnecting today.
+      const ep4 = storySetClock(3);
+      $("story-t-4").textContent = `day 3 — ${storyFmtDate(ep4)}`;
+      const mobile = JSON.parse(JSON.stringify(invoice));
+      // Mobile never saw the day-2 mergeDocReq result. Roll back those fields:
+      delete mobile.paid; delete mobile._his.paid;
+      mobile.qty = 5;
+      mobile._his.qty = { t: ep2, h: JsonMerge.valueHash(5) };
+      // Mobile changed city ~12h ago:
+      storySetClock(2, 12);
+      m.updateDoc(mobile, [{ "address.city": "Lake Falls Bay" }]);
+      // Now reconcile, with the clock back to day 3:
+      storySetClock(3);
+      storyAdopt(invoice, m.blindMerge(JSON.parse(JSON.stringify(invoice)), mobile));
+      storyShow(4, invoice, prev);                             // diff vs step 3
+      prev = JSON.parse(JSON.stringify(invoice));
+
+      // ---- Step 5: threeWayMerge (day 4) ----------------------------
+      const ep5 = storySetClock(4);
+      $("story-t-5").textContent = `day 4 — ${storyFmtDate(ep5)}`;
+      const base   = JSON.parse(JSON.stringify(invoice));
+      const ours   = JSON.parse(JSON.stringify(invoice));
+      const theirs = JSON.parse(JSON.stringify(invoice));
+      // Both edit "name" — that's a real conflict.
+      storySetClock(4, 1);
+      m.updateDoc(ours,   [{ name: "Bobby Smith" }]);
+      storySetClock(4, 3);
+      m.updateDoc(theirs, [{ name: "Robert Smith" }, { qty: 9 }]);
+      storySetClock(5);
+      const { merged: threeMerged, conflicts } = m.threeWayMerge(base, ours, theirs);
+      storyAdopt(invoice, threeMerged);
+      // Render the merged doc with diff-highlights vs step 4, prefixed by the conflict list.
+      storyShow(5, invoice, prev, `conflicts: ${JSON.stringify(conflicts)}\n--- merged ---`);
+      prev = JSON.parse(JSON.stringify(invoice));
+
+      // ---- Step 6: diff + patch (day 5) -----------------------------
+      const ep6 = storySetClock(5);
+      $("story-t-6").textContent = `day 5 — ${storyFmtDate(ep6)}`;
+      // Build a "day-0 snapshot" from scratch so diff has something to chew.
+      storySetClock(0);
+      const snapshot = m.makeNewDoc({
+        docType: "invoice",
+        name: "Bob Smith",
+        qty: 5,
+        address: { city: "Lak Falls", zip: "10001" },
+        tags: ["vip"],
+      });
+      storySetClock(5);
+      const ops    = m.diffDocs(snapshot, invoice);
+      const repatched = m.patchDoc(JSON.parse(JSON.stringify(snapshot)), ops);
+      // diffDocs/patchDoc operate on user data; _his bookkeeping isn't
+      // part of the patch. Compare only the user-visible fields.
+      const stripMeta = (d) => {
+        const o = {};
+        for (const k of Object.keys(d)) if (!JsonMerge.RESERVED_KEYS.has(k)) o[k] = d[k];
+        return o;
+      };
+      storyShow(6, {
+        patch_ops: ops,
+        user_fields_round_trip_equal:
+          JSON.stringify(stripMeta(repatched)) === JSON.stringify(stripMeta(invoice)),
+      });
+
+      // ---- Step 7: validate + historyIso (day 6) --------------------
+      const ep7 = storySetClock(6);
+      $("story-t-7").textContent = `day 6 — ${storyFmtDate(ep7)}`;
+      const issues  = m.validate(invoice);
+      const history = m.historyIso(invoice);
+      storyShow(7, {
+        validate:   issues.length ? issues : "✅ healthy",
+        historyIso: history,
+      });
+
+      $("story-status").textContent = "✓ ran 7 steps";
+      $("story-status").className   = "badge badge-success self-center";
+      toast("Story demo complete (7 steps)", "success");
+    } catch (e) {
+      $("story-status").textContent = "✗ failed";
+      $("story-status").className   = "badge badge-error self-center";
+      toast("Story demo failed: " + e.message, "error");
+      throw e;
+    } finally {
+      storyResetClock();   // ALWAYS restore real wall-clock
+    }
+  }
+
+  $("btn-story-run").addEventListener("click", runStoryDemo);
+  $("btn-story-reset").addEventListener("click", storyClear);
+
+  // ---- pack / unpack ---------------------------------------------------
+  // The panel renders all three formats (dict / cols JSON / cbor binary)
+  // side-by-side so JSON vs binary contrast is obvious. The library
+  // auto-unpacks _his on every entry point, so packed docs can be passed
+  // back into any other tab.
+  function jsonBytes(obj) {
+    return encoder.encode(JSON.stringify(obj)).length;
+  }
+  function stripMeta(doc) {
+    const out = {};
+    for (const k of Object.keys(doc)) {
+      if (!JsonMerge.RESERVED_KEYS.has(k)) out[k] = doc[k];
+    }
+    return out;
+  }
+  function ensureManagedForPack(doc) {
+    const m = makeMerger();
+    if (m.isManaged(doc) || doc._hisF != null) return doc;
+    return m.makeNewDoc(doc);
+  }
+  // base64 string -> "hex hex hex …" preview (truncated, with ASCII gutter)
+  function b64ToHexPreview(b64, maxBytes) {
+    maxBytes = maxBytes || 256;
+    let bin;
+    try { bin = atob(b64); } catch (e) { return "(invalid base64)"; }
+    const total = bin.length;
+    const n = Math.min(total, maxBytes);
+    const lines = [];
+    for (let off = 0; off < n; off += 16) {
+      const chunk = bin.slice(off, off + 16);
+      const hex = [];
+      const asc = [];
+      for (let i = 0; i < chunk.length; i++) {
+        const b = chunk.charCodeAt(i);
+        hex.push(b.toString(16).padStart(2, "0"));
+        asc.push(b >= 32 && b < 127 ? chunk[i] : ".");
+      }
+      lines.push(
+        off.toString(16).padStart(6, "0") + "  " +
+        hex.join(" ").padEnd(16 * 3 - 1, " ") + "  |" + asc.join("") + "|"
+      );
+    }
+    if (total > n) lines.push(`… (${total - n} more bytes)`);
+    return lines.join("\n");
+  }
+
+  function refreshPackPanel() {
+    let doc;
+    try { doc = parseJsonOr("pack-input"); } catch (e) { return; }
+    doc = ensureManagedForPack(doc);
+
+    const unpacked = JsonMerge.unpackHis(doc);              // dict form
+    const colsDoc  = JsonMerge.packHis(unpacked, "cols");
+    const cborDoc  = JsonMerge.packHis(unpacked, "cbor");
+
+    // Render each format
+    $("pack-out-dict").textContent = JSON.stringify(unpacked, null, 2);
+    $("pack-out-cols").textContent = JSON.stringify(colsDoc, null, 2);
+    $("pack-out-cbor").textContent = JSON.stringify(cborDoc, null, 2);
+    // Hex view of the raw CBOR bytes (decoded from the base64 inside _his.d)
+    const b64 = (cborDoc._his && cborDoc._his.d) ? cborDoc._his.d : "";
+    $("pack-out-cbor-hex").textContent = b64ToHexPreview(b64, 512);
+
+    // Size badges + comparison table
+    const rawBytes  = jsonBytes(stripMeta(unpacked));
+    const dictBytes = jsonBytes(unpacked);
+    const colsBytes = jsonBytes(colsDoc);
+    const cborBytes = jsonBytes(cborDoc);
+
+    $("pack-size-dict").textContent = fmtBytes(dictBytes);
+    $("pack-size-cols").textContent = fmtBytes(colsBytes);
+    $("pack-size-cbor").textContent = fmtBytes(cborBytes);
+
+    const tbody = $("pack-size-tbody");
+    tbody.innerHTML = "";
+    function row(label, bytes, note) {
+      const vsRaw  = rawBytes  ? (bytes / rawBytes ).toFixed(2) + "×" : "—";
+      const vsDict = dictBytes ? (bytes / dictBytes).toFixed(2) + "×" : "—";
+      const tr = document.createElement("tr");
+      tr.innerHTML =
+        `<td><code>${label}</code></td>` +
+        `<td class="font-mono">${fmtBytes(bytes)}</td>` +
+        `<td class="font-mono">${vsRaw}</td>` +
+        `<td class="font-mono">${vsDict}</td>` +
+        `<td class="opacity-70 text-xs">${note}</td>`;
+      tbody.appendChild(tr);
+    }
+    row("raw user payload", rawBytes, "user data only, no <code>_his</code>");
+    row("dict (default)",   dictBytes, "<code>_his[path] = {t,h}</code>");
+    row("cols (JSON)",      colsBytes, "columnar <code>{p,t,h}</code> arrays");
+    row("cbor (binary)",    cborBytes, "CBOR blob (base64 + integrity hash)");
+  }
+
+  $("btn-pack-run").addEventListener("click", () => {
+    try { refreshPackPanel(); toast("Packed all 3 formats", "success"); }
+    catch (e) { toast("Pack failed: " + e.message, "error"); }
+  });
+
+  $("btn-pack-roundtrip").addEventListener("click", () => {
+    let doc;
+    try { doc = parseJsonOr("pack-input"); } catch (e) { return; }
+    doc = ensureManagedForPack(doc);
+    const start = JsonMerge.unpackHis(doc);
+    const results = {};
+    for (const fmt of ["cols", "cbor"]) {
+      const packed   = JsonMerge.packHis(start, fmt);
+      const repacked = JsonMerge.unpackHis(packed);
+      results[fmt] = (JSON.stringify(repacked._his) === JSON.stringify(start._his));
+    }
+    const ok = results.cols && results.cbor;
+    toast(ok
+      ? "Round-trip OK ✅ (cols + cbor)"
+      : `Round-trip FAILED: cols=${results.cols}, cbor=${results.cbor}`,
+      ok ? "success" : "error");
+  });
+
+  // CBOR pane: toggle between JSON-wrapper view and raw-bytes hex view.
+  document.querySelectorAll("[data-cbor-view]").forEach(t => {
+    t.addEventListener("click", () => {
+      document.querySelectorAll("[data-cbor-view]").forEach(x => x.classList.remove("tab-active"));
+      t.classList.add("tab-active");
+      const view = t.dataset.cborView;
+      $("pack-out-cbor").classList.toggle("hidden", view !== "json");
+      $("pack-out-cbor-hex").classList.toggle("hidden", view !== "hex");
+    });
+  });
+
+  // Auto-refresh on input edits so all three panes stay in sync with the textarea.
+  $("pack-input").addEventListener("input", () => {
+    try { refreshPackPanel(); } catch (e) { /* keep silent until valid JSON */ }
+  });
+  // Also refresh when a "Load:" button fills the textarea.
+  document.querySelectorAll('[data-load="pack-input"]').forEach(btn => {
+    btn.addEventListener("click", () => {
+      // wait one tick so the fetch handler has populated the textarea
+      setTimeout(() => { try { refreshPackPanel(); } catch (e) {} }, 50);
+    });
+  });
+
+  // ---- API tab (live server) -----------------------------------------
+  // Talks to example_python/server.py. The server returns errors in
+  // the Apollo envelope {status_code, error, detail}, where `detail`
+  // can be a string OR an array of {loc, code, msg} issues. The UI
+  // renders both forms.
+  const API_PRESETS = {
+    "/api/make-new-doc": {
+      happy: { doc: { docType: "invoice", name: "Bob", qty: 5, address: { city: "Lake Falls" } } },
+      "multi-error": { /* no doc => missing_field */ }
+    },
+    "/api/update-doc": {
+      happy: {
+        doc: null /* filled at runtime via makeNewDoc */,
+        changes: [{ "address.city": "Lake Falls West" }, { "tags[1]": "net60" }]
+      },
+      "multi-error": {
+        doc: {
+          _his: {
+            "":          { t: 100 },                      // invalid_path
+            "name":      { t: "yesterday" },              // invalid_type on t
+            "apples":    { v: "red", t: 100, h: "abc" }    // schema_drift (has v)
+          },
+          upDtEp: "never"                                  // invalid_type
+        },
+        changes: [{ "_his.foo": "no" }, "not-an-object"]   // reserved_key + invalid_type
+      }
+    },
+    "/api/blind-merge": {
+      happy: { doc1: null, doc2: null },
+      "multi-error": { doc1: { _his: 42 }, doc2: "nope" }
+    },
+    "/api/pack-his": {
+      happy:        { doc: null, fmt: "cbor" },
+      "multi-error": { doc: { _his: "nope" }, fmt: "msgpack" }
+    },
+    "/api/unpack-his": {
+      happy:        { doc: null },                          // packed cbor doc, filled at runtime
+      "multi-error": { doc: { _his: { d: "AAAA", s: "wrong" }, _hisF: "b" } }
+    },
+    "/api/validate": {
+      happy: { doc: null },
+      "multi-error": { doc: { _his: { "": { t: -1 } } } }
+    },
+    "/api/diff": {
+      happy: { a: { name: "A" }, b: { name: "B", extra: 1 } },
+      "multi-error": { a: "x" }
+    },
+    "/api/patch": {
+      happy: { doc: null, ops: [{ op: "replace", path: "/name", value: "Z" }] },
+      "multi-error": { doc: { _his: {} }, ops: [{ op: "frobnicate", path: "/x" }, "string"] }
+    },
+    "/api/merge-doc-request": {
+      happy: { doc1: null, doc2: null },
+      "multi-error": { doc1: 1, doc2: null }
+    },
+    "/api/three-way-merge": {
+      happy: { base: null, ours: null, theirs: null },
+      "multi-error": { base: "a", ours: 1, theirs: [] }
+    }
+  };
+
+  function apiBase() { return $("api-base").value.replace(/\/+$/, ""); }
+
+  function setStatus(text, kind) {
+    const el = $("api-status");
+    el.textContent = text;
+    el.className = `badge badge-${kind || "ghost"}`;
+  }
+
+  // Build a managed sample doc once, lazily, for presets that need one.
+  function sampleManaged() {
+    const m = makeMerger();
+    return m.makeNewDoc({ docType: "invoice", name: "Bob", qty: 5,
+                          address: { city: "Lake Falls" }, tags: ["vip","net30"] });
+  }
+
+  function fillPreset(endpoint, kind) {
+    const tmpl = (API_PRESETS[endpoint] || {})[kind];
+    if (!tmpl) { toast(`No preset for ${endpoint}`, "warning"); return; }
+    const body = JSON.parse(JSON.stringify(tmpl));
+    // Lazily hydrate `null` fields with a freshly-stamped sample doc.
+    function fillNulls(obj) {
+      if (!obj || typeof obj !== "object") return;
+      for (const k of Object.keys(obj)) {
+        if (obj[k] === null) {
+          if (endpoint === "/api/unpack-his") {
+            obj[k] = JsonMerge.packHis(sampleManaged(), "cbor");
+          } else {
+            obj[k] = sampleManaged();
+          }
+        } else if (typeof obj[k] === "object") fillNulls(obj[k]);
+      }
+    }
+    fillNulls(body);
+    $("api-body").value = JSON.stringify(body, null, 2);
+    updateByteBadge($("api-body"));
+  }
+
+  document.querySelectorAll("[data-api-preset]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      fillPreset($("api-endpoint").value, btn.dataset.apiPreset);
+    });
+  });
+
+  $("btn-api-ping").addEventListener("click", async () => {
+    setStatus("pinging…", "ghost");
+    try {
+      const r = await fetch(apiBase() + "/api/version");
+      const j = await r.json();
+      if (r.ok) setStatus(`online · v${j.version} · schemaV ${j.schemaV}`, "success");
+      else      setStatus(`HTTP ${r.status}`, "error");
+    } catch (e) {
+      setStatus("unreachable", "error");
+      toast(`Server unreachable: ${e.message}. Did you start server.py?`, "error");
+    }
+  });
+
+  function renderIssues(detail) {
+    const wrap = $("api-issues-wrap");
+    const tbody = $("api-issues-tbody");
+    tbody.innerHTML = "";
+    if (!Array.isArray(detail)) { wrap.classList.add("hidden"); return; }
+    wrap.classList.remove("hidden");
+    for (const it of detail) {
+      const tr = document.createElement("tr");
+      const loc  = (it.loc  || []).map(x => typeof x === "number" ? `[${x}]` : x).join(" → ");
+      const code = it.code || it.type || "—";
+      const msg  = it.msg  || it.message || JSON.stringify(it);
+      tr.innerHTML =
+        `<td class="font-mono text-xs">${loc}</td>` +
+        `<td><span class="badge badge-error badge-outline">${code}</span></td>` +
+        `<td class="text-xs">${msg}</td>`;
+      tbody.appendChild(tr);
+    }
+  }
+
+  $("btn-api-send").addEventListener("click", async () => {
+    const endpoint = $("api-endpoint").value;
+    let body;
+    try { body = JSON.parse($("api-body").value || "{}"); }
+    catch (e) { toast("Body is not valid JSON: " + e.message, "error"); return; }
+
+    const statusBadge = $("api-status-badge");
+    statusBadge.textContent = "…";
+    statusBadge.className = "label-text-alt badge badge-ghost";
+
+    let r, raw, json;
+    try {
+      r = await fetch(apiBase() + endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      raw = await r.text();
+      try { json = JSON.parse(raw); } catch (e) { json = raw; }
+    } catch (e) {
+      $("api-response").textContent = `(network error) ${e.message}`;
+      statusBadge.textContent = "network err";
+      statusBadge.className = "label-text-alt badge badge-error";
+      return;
+    }
+    $("api-response").textContent = typeof json === "string" ? json : JSON.stringify(json, null, 2);
+    statusBadge.textContent = `HTTP ${r.status} ${r.statusText}`;
+    statusBadge.className = "label-text-alt badge " + (r.ok ? "badge-success" : "badge-error");
+
+    // Multi-issue table when the server returned the Apollo envelope.
+    if (!r.ok && json && typeof json === "object" && "detail" in json) {
+      renderIssues(json.detail);
+    } else {
+      $("api-issues-wrap").classList.add("hidden");
+    }
+  });
+
+  // Auto-fill a happy-path preset whenever the endpoint dropdown changes,
+  // so users don't stare at an empty textarea.
+  $("api-endpoint").addEventListener("change", () => {
+    fillPreset($("api-endpoint").value, "happy");
+  });
+  // Initial happy-path preset for the default endpoint.
+  fillPreset($("api-endpoint").value, "happy");
 })();
 </script>
 </body>
