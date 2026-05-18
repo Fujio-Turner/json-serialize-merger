@@ -1,0 +1,77 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 620" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <style>
+    .title  { font-size: 18px; font-weight: 700; fill: #0f172a; }
+    .h2     { font-size: 14px; font-weight: 600; fill: #0f172a; }
+    .small  { font-size: 12px; fill: #475569; }
+    .code   { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 12px; fill: #0f172a; }
+    .docA   { fill: #eff6ff; stroke: #3b82f6; stroke-width: 1.5; }
+    .docB   { fill: #fef3c7; stroke: #f59e0b; stroke-width: 1.5; }
+    .merger { fill: #f1f5f9; stroke: #475569; stroke-width: 2; }
+    .out    { fill: #ecfdf5; stroke: #10b981; stroke-width: 2; }
+    .arrow  { stroke: #475569; stroke-width: 2; fill: none; }
+    .pillG  { fill: #16a34a; }
+    .pillR  { fill: #dc2626; }
+    .pillT  { fill: #ffffff; font-size: 11px; font-weight: 700; }
+  </style>
+
+  <!-- White background -->
+  <rect width="900" height="620" fill="#ffffff"/>
+
+  <text class="title" x="450" y="32" text-anchor="middle">blind_merge — newer per-field timestamp wins, independently for each path</text>
+
+  <!-- doc1 -->
+  <rect class="docA" x="40" y="70" width="300" height="170" rx="10"/>
+  <text class="h2"   x="60" y="98">doc1   (upDtEp = 110)</text>
+  <text class="code" x="60" y="125">_his = {</text>
+  <text class="code" x="60" y="142">  "name":   {v:"Alice", t:100},</text>
+  <text class="code" x="60" y="159">  "city":   {v:"LF",    t:110},</text>
+  <text class="code" x="60" y="176">  "qty":    {v:5,       t:105},</text>
+  <text class="code" x="60" y="193">  "tags[0]":{v:"vip",   t:100}</text>
+  <text class="code" x="60" y="210">}</text>
+
+  <!-- doc2 -->
+  <rect class="docB" x="560" y="70" width="300" height="170" rx="10"/>
+  <text class="h2"   x="580" y="98">doc2   (upDtEp = 120)</text>
+  <text class="code" x="580" y="125">_his = {</text>
+  <text class="code" x="580" y="142">  "name":   {v:"Bob",     t:120},</text>
+  <text class="code" x="580" y="159">  "city":   {v:"LF West", t:108},</text>
+  <text class="code" x="580" y="176">  "qty":    {v:-2,        t:115},</text>
+  <text class="code" x="580" y="193">  "tags[0]":{v:"net30",   t:118}</text>
+  <text class="code" x="580" y="210">}</text>
+
+  <!-- merger -->
+  <rect class="merger" x="370" y="290" width="160" height="80" rx="40"/>
+  <text class="h2"    text-anchor="middle" x="450" y="325">blind_merge</text>
+  <text class="small" text-anchor="middle" x="450" y="345">pick max t per path</text>
+  <text class="small" text-anchor="middle" x="450" y="360">apply qty clamp</text>
+
+  <!-- arrows from docs to merger -->
+  <path class="arrow" d="M 190 240 L 410 290" marker-end="url(#arr)"/>
+  <path class="arrow" d="M 710 240 L 490 290" marker-end="url(#arr)"/>
+
+  <!-- output -->
+  <rect class="out" x="160" y="400" width="580" height="135" rx="10"/>
+  <text class="h2"   x="180" y="428">merged</text>
+  <text class="code" x="180" y="455">{ "name": "Bob",     ← doc2 t=120 wins</text>
+  <text class="code" x="180" y="472">  "city": "LF",      ← doc1 t=110 wins</text>
+  <text class="code" x="180" y="489">  "qty":  0,         ← doc2 t=115 wins, then clamped (was -2)</text>
+  <text class="code" x="180" y="506">  "tags[0]": "net30" ← doc2 t=118 wins</text>
+  <text class="code" x="180" y="523">}</text>
+
+  <!-- arrow merger -> output -->
+  <path class="arrow" d="M 450 370 L 450 400" marker-end="url(#arr)"/>
+
+  <!-- legend (in dedicated space below the merged box) -->
+  <rect class="pillG" x="160" y="565" width="62" height="22" rx="11"/>
+  <text class="pillT" x="191" y="580" text-anchor="middle">winner</text>
+  <text class="small" x="232" y="580">value with the largest _his.t for that path</text>
+
+  <rect class="pillR" x="480" y="565" width="62" height="22" rx="11"/>
+  <text class="pillT" x="511" y="580" text-anchor="middle">clamp</text>
+  <text class="small" x="552" y="580">qtyMath: any 'qty' leaf is forced to ≥ 0</text>
+</svg>

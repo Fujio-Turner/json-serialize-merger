@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 560" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <style>
+    .title  { font-size: 18px; font-weight: 700; fill: #0f172a; }
+    .h2     { font-size: 14px; font-weight: 600; fill: #0f172a; }
+    .small  { font-size: 12px; fill: #475569; }
+    .label  { font-size: 12px; font-weight: 600; fill: #1e293b; }
+    .code   { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 13px; fill: #0f172a; }
+    .codeP  { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 13px; fill: #7c3aed; font-weight: 600; }
+    .codeB  { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 13px; fill: #1d4ed8; font-weight: 600; }
+    .doc    { fill: #ffffff; stroke: #475569; stroke-width: 1.5; }
+    .meta   { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1; }
+    .arrow  { stroke: #475569; stroke-width: 1.5; fill: none; }
+    .tag    { fill: #1e293b; }
+    .tagT   { fill: #f8fafc; font-size: 11px; font-weight: 600; }
+  </style>
+
+  <!-- White background -->
+  <rect width="1080" height="560" fill="#ffffff"/>
+
+  <text class="title" x="540" y="32" text-anchor="middle">Anatomy of a managed document — the _his sidecar</text>
+
+  <!-- Document box -->
+  <rect class="doc" x="30" y="65" width="660" height="445" rx="10"/>
+  <text class="code" x="50" y="95">{</text>
+  <text class="code" x="70" y="115">"docType": "invoice",</text>
+  <text class="code" x="70" y="135">"name":    "Bob",</text>
+  <text class="code" x="70" y="155">"address": { "city": "Lake Falls" },</text>
+  <text class="code" x="70" y="175">"tags":    ["vip", "net30"],</text>
+
+  <!-- _his sub-box -->
+  <rect class="meta" x="60" y="190" width="610" height="225" rx="6"/>
+  <text class="codeP" x="70" y="212">"_his": {</text>
+
+  <text class="codeB" x="90" y="240">"name"</text>
+  <text class="code"  x="138" y="240">: { "v":"Bob",  "t":1700000000, "h":"a1b2c3d4" },</text>
+
+  <text class="codeB" x="90" y="270">"address.city"</text>
+  <text class="code"  x="202" y="270">: { "v":"Lake Falls",</text>
+  <text class="code"  x="202" y="288">    "t":1700000000, "h":"9f3a..." },</text>
+
+  <text class="codeB" x="90" y="320">"tags[0]"</text>
+  <text class="code"  x="162" y="320">: { "v":"vip",   "t":1700000000, "h":"b21e..." },</text>
+
+  <text class="codeB" x="90" y="350">"tags[1]"</text>
+  <text class="code"  x="162" y="350">: { "v":"net30", "t":1700000000, "h":"cde9..." }</text>
+
+  <text class="codeP" x="70" y="380">},</text>
+
+  <text class="code"  x="70" y="430">"upDtEp":  1700000000,</text>
+  <text class="code"  x="70" y="450">"schemaV": 2</text>
+  <text class="code"  x="50" y="475">}</text>
+
+  <!-- Callouts column (well clear of the doc box) -->
+  <!-- path -->
+  <rect class="tag" x="780" y="225" width="100" height="22" rx="11"/>
+  <text class="tagT" x="830" y="240" text-anchor="middle">path</text>
+  <text class="small" x="900" y="240">dotted + bracket,</text>
+  <text class="small" x="900" y="256">any depth: a.b[0].c</text>
+  <path class="arrow" d="M 778 236 C 740 236 670 240 250 240" marker-end="url(#arr)"/>
+
+  <!-- v -->
+  <rect class="tag" x="780" y="290" width="100" height="22" rx="11"/>
+  <text class="tagT" x="830" y="305" text-anchor="middle">v = value</text>
+  <text class="small" x="900" y="305">last known value</text>
+  <text class="small" x="900" y="321">at this path</text>
+  <path class="arrow" d="M 778 301 C 700 301 640 320 280 320" marker-end="url(#arr)"/>
+
+  <!-- t -->
+  <rect class="tag" x="780" y="345" width="100" height="22" rx="11"/>
+  <text class="tagT" x="830" y="360" text-anchor="middle">t = epoch</text>
+  <text class="small" x="900" y="360">UTC Unix seconds (int);</text>
+  <text class="small" x="900" y="376">ISO-8601 via helpers.</text>
+  <path class="arrow" d="M 778 356 C 700 356 600 350 380 350" marker-end="url(#arr)"/>
+
+  <!-- h -->
+  <rect class="tag" x="780" y="400" width="100" height="22" rx="11"/>
+  <text class="tagT" x="830" y="415" text-anchor="middle">h = hash</text>
+  <text class="small" x="900" y="415">SHA-256 prefix;</text>
+  <text class="small" x="900" y="431">tamper/drift signal.</text>
+  <path class="arrow" d="M 778 411 C 700 411 620 360 500 350" marker-end="url(#arr)"/>
+
+  <!-- bottom note -->
+  <text class="label" x="30" y="535">Reserved keys (never tracked):  docType, _his, upDtEp, crDtEp, schemaV</text>
+</svg>

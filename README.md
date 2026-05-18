@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="img/overview.svg" alt="json-serialize-merger overview: two replicas merged into a time-correct document" width="800"/>
+</p>
+
 ### DATA/JSON IN CONFLICTS
 In a JSON databases ,like Couchbase and in particular Couchbase Mobile, when you have a document(s) were two or more people change the same piece of information you get conflicts.
 
@@ -24,6 +28,12 @@ Ok the document has a timestamp ,but what field(s) changed from the update and w
 ##### FIELD LEVEL TIMESTAMPS
 The only way to know what field(s) changed and when is to track / assign a timestamp for the field(s) that changed. Example the JSON ABOVE when you change the field `"name":` FROM `"Robert Smith"` TO `"Bob Smith"` we put inside the document something like `{"field":"name","time":"some date"}` too.
 
+The library stores this bookkeeping inline in a sidecar called `_his` (platform-agnostic, leading underscore = reserved). Each path — including nested objects and array indices — has its own value `v`, epoch timestamp `t`, and short content hash `h`:
+
+<p align="center">
+  <img src="img/his-sidecar.svg" alt="Anatomy of the _his sidecar: path → {v, t, h} entries embedded in the document" width="800"/>
+</p>
+
 ##### USEAGE
 In this project its designed to do the bookkeeping information and the merging of two documents with the embedded bookkeeping information to a serialzed or stitch "time correct"<sup>1.</sup> version of documents. 
 
@@ -34,7 +44,7 @@ This creates and puts the bookkeeping field names & timestamps information docum
 
 | Input | Output |
 |--------|-------|
-|```{"docType":"invoice","name":"Bob Smith","address":"123 Fake St. Lake Falls, MA 8000","apples":"red"}```|```{"docType": "invoice", "name": "Bob Smith", "address": "123 Fake St. Lake Falls, MA 8000", "apples": "red", "cbHis": {"name": {"v": "Bob Smith", "t": 1687515677}, "address": {"v": "123 Fake St. Lake Falls, MA 8000", "t": 1687515677}, "apples": {"v": "red", "t": 1687515677}}, "upDtEp": 1687515677}```|
+|```{"docType":"invoice","name":"Bob Smith","address":"123 Fake St. Lake Falls, MA 8000","apples":"red"}```|```{"docType": "invoice", "name": "Bob Smith", "address": "123 Fake St. Lake Falls, MA 8000", "apples": "red", "_his": {"name": {"v": "Bob Smith", "t": 1687515677}, "address": {"v": "123 Fake St. Lake Falls, MA 8000", "t": 1687515677}, "apples": {"v": "red", "t": 1687515677}}, "upDtEp": 1687515677}```|
 
 <br/><br/>
 + 2 `updateDoc(JSON,array_of_changes)`
@@ -43,7 +53,7 @@ Ok you have a document w/ bookeeping data from the ABOVE, but you want to update
 
 |Input: Doc w/ History | Input: Change List |
 |--------|-------|
-|```{"docType": "invoice", "name": "Bob Smith", "address": "123 Fake St. Lake Falls, MA 8000", "apples": "red", "cbHis": {"name": {"v": "Bob Smith", "t": 1687515677}, "address": {"v": "123 Fake St. Lake Falls, MA 8000", "t": 1687515677}, "apples": {"v": "red", "t": 1687515677}}, "upDtEp": 1687515677}```| ```[{"apples":"blue"},{"nickName":"the guy"}]```|
+|```{"docType": "invoice", "name": "Bob Smith", "address": "123 Fake St. Lake Falls, MA 8000", "apples": "red", "_his": {"name": {"v": "Bob Smith", "t": 1687515677}, "address": {"v": "123 Fake St. Lake Falls, MA 8000", "t": 1687515677}, "apples": {"v": "red", "t": 1687515677}}, "upDtEp": 1687515677}```| ```[{"apples":"blue"},{"nickName":"the guy"}]```|
 <br/><br/>
 + 3 `mergeRequest(Your_JSON,Changes_JSON)`
 
@@ -53,7 +63,11 @@ and the function will spit out merged "time correct"<sup>1.</sup> document `"doc
 <br/><br/>
 + 4 `blindMerge(JSON_1,JSON_2)`
 
-Lets say you have two documents. In fact the exact same `docType` and docId/Key but with changed/conflicting data. Just put in both of the document/JSON and this function will figure it out and spit out a "time correct"<sup>1.</sup> single document. 
+Lets say you have two documents. In fact the exact same `docType` and docId/Key but with changed/conflicting data. Just put in both of the document/JSON and this function will figure it out and spit out a "time correct"<sup>1.</sup> single document.
+
+<p align="center">
+  <img src="img/blind-merge.svg" alt="blind_merge: newer per-field timestamp wins, independently for each path" width="800"/>
+</p>
 
 
 ***BONUS***
@@ -68,7 +82,7 @@ In the above functions if you have a field called `qty` with an integer as a val
 
 ##### FUTURE
 + non-root level document , array and object merging. Right now only root level single elements can be merged based on timestamp.
-+ storing `cbHis` inside Couchbase's [xattrs](https://docs.couchbase.com/server/current/learn/data/extended-attributes-fundamentals.html#3.0@java-sdk:concept-docs:xattr.adoc)
++ storing `_his` inside Couchbase's [xattrs](https://docs.couchbase.com/server/current/learn/data/extended-attributes-fundamentals.html#3.0@java-sdk:concept-docs:xattr.adoc)
 + AI friendly Source Code for converting the Python code to your favorite programming language.
 <br/><br/>
 

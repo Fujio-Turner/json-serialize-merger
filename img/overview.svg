@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 500" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <style>
+    .title  { font-size: 18px; font-weight: 700; fill: #0f172a; }
+    .h2     { font-size: 14px; font-weight: 600; fill: #0f172a; }
+    .small  { font-size: 12px; fill: #475569; }
+    .code   { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 12px; fill: #0f172a; }
+    .nodeA  { fill: #eff6ff; stroke: #3b82f6; stroke-width: 1.5; }
+    .nodeB  { fill: #fef3c7; stroke: #f59e0b; stroke-width: 1.5; }
+    .nodeM  { fill: #f1f5f9; stroke: #475569; stroke-width: 2; }
+    .nodeO  { fill: #ecfdf5; stroke: #10b981; stroke-width: 2; }
+    .arrow  { stroke: #475569; stroke-width: 2; fill: none; }
+    .badge  { fill: #1e293b; }
+    .badgeT { fill: #f8fafc; font-size: 11px; font-weight: 600; }
+  </style>
+
+  <!-- Background (renders the same on light and dark themes) -->
+  <rect width="900" height="500" fill="#ffffff"/>
+
+  <!-- Title -->
+  <text class="title" x="450" y="32" text-anchor="middle">json-serialize-merger — field-level, time-based conflict resolution</text>
+
+  <!-- Replica A -->
+  <rect class="nodeA" x="40" y="70" width="240" height="160" rx="12"/>
+  <text class="h2"   x="60" y="98">Replica A  (offline)</text>
+  <text class="code" x="60" y="125">{ "name": "Alice",</text>
+  <text class="code" x="60" y="143">  "qty":  5 }</text>
+  <rect class="badge" x="60" y="172" width="100" height="22" rx="11"/>
+  <text class="badgeT" x="110" y="187" text-anchor="middle">edited @ t=10</text>
+
+  <!-- Replica B -->
+  <rect class="nodeB" x="40" y="280" width="240" height="160" rx="12"/>
+  <text class="h2"   x="60" y="308">Replica B  (offline)</text>
+  <text class="code" x="60" y="335">{ "name": "Bob",</text>
+  <text class="code" x="60" y="353">  "qty":  3 }</text>
+  <rect class="badge" x="60" y="382" width="100" height="22" rx="11"/>
+  <text class="badgeT" x="110" y="397" text-anchor="middle">edited @ t=20</text>
+
+  <!-- Merger -->
+  <rect class="nodeM" x="370" y="200" width="170" height="110" rx="55"/>
+  <text class="h2"    text-anchor="middle" x="455" y="240">JSONMERGE</text>
+  <text class="small" text-anchor="middle" x="455" y="262">field-level</text>
+  <text class="small" text-anchor="middle" x="455" y="278">"newest wins"</text>
+  <text class="small" text-anchor="middle" x="455" y="294">+ qty clamp</text>
+
+  <!-- Arrows in -->
+  <path class="arrow" d="M 280 150 C 330 150 330 230 370 240" marker-end="url(#arr)"/>
+  <path class="arrow" d="M 280 360 C 330 360 330 280 370 270" marker-end="url(#arr)"/>
+
+  <!-- Output -->
+  <rect class="nodeO" x="620" y="70" width="240" height="370" rx="12"/>
+  <text class="h2"   x="640" y="98">Merged (time-correct)</text>
+  <text class="code" x="640" y="125">{ "name": "Bob",</text>
+  <text class="code" x="640" y="143">  "qty":  3,</text>
+  <text class="code" x="640" y="161">  "_his": {</text>
+  <text class="code" x="640" y="179">    "name": {v:"Bob",t:20},</text>
+  <text class="code" x="640" y="197">    "qty":  {v:3,    t:20}</text>
+  <text class="code" x="640" y="215">  },</text>
+  <text class="code" x="640" y="233">  "upDtEp": 20 }</text>
+
+  <text class="small" x="640" y="278">Each field carries its own</text>
+  <text class="small" x="640" y="294">last-set timestamp, so the</text>
+  <text class="small" x="640" y="310">newest value wins — per field,</text>
+  <text class="small" x="640" y="326">independently of the document.</text>
+
+  <text class="small" x="640" y="360">No central coordinator.</text>
+  <text class="small" x="640" y="376">No vector clocks required.</text>
+  <text class="small" x="640" y="392">Just an embedded sidecar.</text>
+
+  <!-- Arrow out -->
+  <path class="arrow" d="M 540 255 L 620 255" marker-end="url(#arr)"/>
+</svg>

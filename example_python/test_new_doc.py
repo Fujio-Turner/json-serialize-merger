@@ -1,9 +1,8 @@
 import json
-import sys
 import os
+import sys
 current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-sys.path.insert(0, parent_dir)
+sys.path.insert(0, current_dir)
 import JsonMerge
 
 if __name__ == "__main__":
@@ -19,16 +18,16 @@ if __name__ == "__main__":
     except:
         print("An exception occurred",data)
     
-    ##Check if has 'cbHis' and not empty
-    if data["cbHis"]:
-        print("check if has cbHis exists: PASS ")
+    ##Check if has '_his' and not empty
+    if data["_his"]:
+        print("check if has _his exists: PASS ")
     else:
-        print("check if has cbHis exists: FAIL")
+        print("check if has _his exists: FAIL")
 
-    if len(data["cbHis"].keys()) > 0:
-        print("check if has cbHis not empty: PASS ")
+    if len(data["_his"].keys()) > 0:
+        print("check if has _his not empty: PASS ")
     else:
-        print("check if has cbHis not empty: FAIL")
+        print("check if has _his not empty: FAIL")
 
     ### check if has upDtEp
     if data["upDtEp"]:

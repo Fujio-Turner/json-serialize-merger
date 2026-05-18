@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 620" font-family="ui-sans-serif, system-ui, -apple-system, sans-serif">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+  </defs>
+  <style>
+    .title  { font-size: 18px; font-weight: 700; fill: #0f172a; }
+    .h2     { font-size: 14px; font-weight: 600; fill: #0f172a; }
+    .small  { font-size: 12px; fill: #475569; }
+    .code   { font-family: ui-monospace, "JetBrains Mono", Menlo, monospace; font-size: 12px; fill: #0f172a; }
+    .base   { fill: #f1f5f9; stroke: #475569; stroke-width: 2; }
+    .ours   { fill: #eff6ff; stroke: #3b82f6; stroke-width: 1.5; }
+    .theirs { fill: #fef3c7; stroke: #f59e0b; stroke-width: 1.5; }
+    .merged { fill: #ecfdf5; stroke: #10b981; stroke-width: 2; }
+    .confl  { fill: #fef2f2; stroke: #dc2626; stroke-width: 1.5; }
+    .arrow  { stroke: #475569; stroke-width: 2; fill: none; }
+    .conflT { fill: #dc2626; font-weight: 700; font-size: 13px; }
+    .okPill { fill: #047857; }
+    .okText { fill: #ffffff; font-size: 11px; font-weight: 700; }
+  </style>
+
+  <!-- White background -->
+  <rect width="980" height="620" fill="#ffffff"/>
+
+  <text class="title" x="490" y="32" text-anchor="middle">three_way_merge(base, ours, theirs) — git-style with conflict reporting</text>
+
+  <!-- base -->
+  <rect class="base" x="380" y="65" width="220" height="100" rx="10"/>
+  <text class="h2"   x="400" y="92">base   (common ancestor)</text>
+  <text class="code" x="400" y="118">{ "title": "v0",</text>
+  <text class="code" x="400" y="135">  "body":  "body0",</text>
+  <text class="code" x="400" y="152">  "tags":  [] }</text>
+
+  <!-- ours -->
+  <rect class="ours" x="60" y="220" width="320" height="130" rx="10"/>
+  <text class="h2"   x="80" y="248">ours</text>
+  <text class="code" x="80" y="275">{ "title": "ours-title",</text>
+  <text class="code" x="270" y="275">← changed</text>
+  <text class="code" x="80" y="292">  "body":  "body0",</text>
+  <text class="code" x="80" y="309">  "tags":  ["urgent"]</text>
+  <text class="code" x="270" y="309">← changed</text>
+  <text class="code" x="80" y="326">}</text>
+
+  <!-- theirs -->
+  <rect class="theirs" x="600" y="220" width="320" height="130" rx="10"/>
+  <text class="h2"   x="620" y="248">theirs</text>
+  <text class="code" x="620" y="275">{ "title": "their-title",</text>
+  <text class="code" x="810" y="275">← changed</text>
+  <text class="code" x="620" y="292">  "body":  "body-edit",</text>
+  <text class="code" x="810" y="292">← changed</text>
+  <text class="code" x="620" y="309">  "tags":  [] }</text>
+
+  <!-- arrows base -> ours/theirs -->
+  <path class="arrow" d="M 400 165 C 320 190 250 200 220 220" marker-end="url(#arr)"/>
+  <path class="arrow" d="M 580 165 C 660 190 730 200 760 220" marker-end="url(#arr)"/>
+
+  <!-- merged (widened so annotations don't overlap) -->
+  <rect class="merged" x="60" y="410" width="540" height="160" rx="10"/>
+  <text class="h2"   x="80" y="438">merged</text>
+  <text class="code" x="80" y="468">{ "title": "their-title",</text>
+  <rect class="okPill" x="340" y="455" width="190" height="20" rx="10"/>
+  <text class="okText" x="435" y="469" text-anchor="middle">conflict → newer t wins</text>
+
+  <text class="code" x="80" y="495">  "body":  "body-edit",</text>
+  <rect class="okPill" x="340" y="482" width="190" height="20" rx="10"/>
+  <text class="okText" x="435" y="496" text-anchor="middle">only theirs changed</text>
+
+  <text class="code" x="80" y="522">  "tags":  ["urgent"]</text>
+  <rect class="okPill" x="340" y="509" width="190" height="20" rx="10"/>
+  <text class="okText" x="435" y="523" text-anchor="middle">only ours changed</text>
+
+  <text class="code" x="80" y="549">}</text>
+
+  <!-- conflicts panel -->
+  <rect class="confl" x="640" y="410" width="280" height="160" rx="10"/>
+  <text class="h2"   x="660" y="438">conflicts (returned)</text>
+  <text class="conflT" x="660" y="468">["title"]</text>
+  <text class="small" x="660" y="492">title changed on BOTH sides:</text>
+  <text class="small" x="660" y="510">  ours.title.t   = 200</text>
+  <text class="small" x="660" y="528">  theirs.title.t = 210</text>
+  <text class="small" x="660" y="552">→ auto-resolved by newer t,</text>
+  <text class="small" x="660" y="568">  also reported for review.</text>
+
+  <!-- arrows down to merged and conflicts -->
+  <path class="arrow" d="M 220 350 C 240 370 280 390 320 410" marker-end="url(#arr)"/>
+  <path class="arrow" d="M 760 350 C 740 370 700 390 660 410" marker-end="url(#arr)"/>
+
+  <!-- summary footer (now within canvas width) -->
+  <text class="small" x="60" y="600">Non-conflicting changes apply automatically. Conflicts (both sides moved away from base) are auto-resolved</text>
+  <text class="small" x="60" y="614">by newest timestamp AND surfaced in the returned list so callers can override.</text>
+</svg>
