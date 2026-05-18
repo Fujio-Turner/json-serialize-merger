@@ -1,0 +1,445 @@
+openapi: 3.1.0
+info:
+  title: json-serialize-merger
+  version: "3.0.0"
+  description: |
+    HTTP wrapper around `JsonMerge.py`. Provides field-level,
+    timestamp-based JSON merging with per-field metadata (`_his`) that
+    can be packed into a smaller JSON columnar form or a binary CBOR
+    blob for storage.
+
+    **Error shape (all 4xx/5xx responses)**
+
+    ```json
+    {
+      "status_code": 400,
+      "error": "Bad Request",
+      "detail": [
+        {"loc": ["body", "doc", "_his", "name", "t"],
+         "code": "invalid_type",
+         "msg":  "expected integer epoch seconds, got 'yesterday'"}
+      ]
+    }
+    ```
+
+    `detail` may be a string OR an array of issue objects. Endpoints
+    that validate JSON shape pre-collect ALL problems and return them in
+    a single 400 — there is never a "first error wins" cascade.
+servers:
+  - url: http://localhost:9090
+
+tags:
+  - name: System
+    description: Version + environment.
+  - name: Lifecycle
+    description: Create / update managed documents.
+  - name: Diff
+    description: RFC 6902 JSON Patch produce / apply.
+  - name: Merge
+    description: Field-level merges (request, blind, three-way).
+  - name: Pack
+    description: Toggle `_his` between dict / columnar JSON / CBOR binary.
+  - name: Inspect
+    description: Structural validation + drift detection.
+
+paths:
+  /api/version:
+    get:
+      operationId: getVersion
+      tags: [System]
+      summary: Server + schema version.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version, schemaV]
+                properties:
+                  version:  { type: string, example: "3.0.0" }
+                  schemaV:  { type: integer, example: 3 }
+
+  /api/env:
+    get:
+      operationId: getEnv
+      tags: [System]
+      summary: Runtime feature flags.
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cbor_available: { type: boolean }
+                  reserved_keys:  { type: array, items: { type: string } }
+
+  /api/make-new-doc:
+    post:
+      operationId: makeNewDoc
+      tags: [Lifecycle]
+      summary: Stamp a plain JSON doc with `_his` + timestamps.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [doc]
+              properties:
+                doc:    { type: object }
+                config: { $ref: "#/components/schemas/MergerConfig" }
+      responses:
+        "200":
+          description: Created managed document.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  doc: { $ref: "#/components/schemas/ManagedDoc" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "500": { $ref: "#/components/responses/InternalServerError" }
+
+  /api/update-doc:
+    post:
+      operationId: updateDoc
+      tags: [Lifecycle]
+      summary: Apply changes to a managed doc.
+      description: |
+        `changes` may be:
+          * `[{"name": "Bob"}]` — legacy single-key dicts
+          * `[{"address.city": "Lake Falls"}, {"tags[1]": "net60"}]`
+          * `{"address": {"zip": "8001"}}` — nested deep merge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [doc, changes]
+              properties:
+                doc:     { $ref: "#/components/schemas/ManagedDoc" }
+                changes:
+                  oneOf:
+                    - type: array
+                      items: { type: object }
+                    - type: object
+                config: { $ref: "#/components/schemas/MergerConfig" }
+      responses:
+        "200":
+          description: Updated document
+          content: { application/json: { schema: { type: object, properties: { doc: { $ref: "#/components/schemas/ManagedDoc" } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/diff:
+    post:
+      operationId: diffDocs
+      tags: [Diff]
+      summary: Produce an RFC 6902 JSON Patch from `a` → `b`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [a, b]
+              properties:
+                a: { type: object }
+                b: { type: object }
+                config: { $ref: "#/components/schemas/MergerConfig" }
+      responses:
+        "200":
+          description: JSON Patch
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ops:
+                    type: array
+                    items: { type: object }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/patch:
+    post:
+      operationId: patchDoc
+      tags: [Diff]
+      summary: Apply RFC 6902 add/replace/remove ops; refresh `_his`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [doc, ops]
+              properties:
+                doc: { $ref: "#/components/schemas/ManagedDoc" }
+                ops: { type: array, items: { type: object } }
+                config: { $ref: "#/components/schemas/MergerConfig" }
+      responses:
+        "200":
+          description: Patched document
+          content: { application/json: { schema: { type: object, properties: { doc: { $ref: "#/components/schemas/ManagedDoc" } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/merge-doc-request:
+    post:
+      operationId: mergeDocRequest
+      tags: [Merge]
+      summary: Asymmetric merge — pull newer fields from doc2 into doc1.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [doc1, doc2]
+              properties:
+                doc1: { $ref: "#/components/schemas/ManagedDoc" }
+                doc2: { $ref: "#/components/schemas/ManagedDoc" }
+                config: { $ref: "#/components/schemas/MergerConfig" }
+      responses:
+        "200":
+          description: Merged document (mutates a copy of doc1)
+          content: { application/json: { schema: { type: object, properties: { doc: { $ref: "#/components/schemas/ManagedDoc" } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/blind-merge:
+    post:
+      operationId: blindMerge
+      tags: [Merge]
+      summary: Symmetric per-field "newer timestamp wins" reconcile.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [doc1, doc2]
+              properties:
+                doc1: { $ref: "#/components/schemas/ManagedDoc" }
+                doc2: { $ref: "#/components/schemas/ManagedDoc" }
+                config: { $ref: "#/components/schemas/MergerConfig" }
+      responses:
+        "200":
+          description: Merged document
+          content: { application/json: { schema: { type: object, properties: { doc: { $ref: "#/components/schemas/ManagedDoc" } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/three-way-merge:
+    post:
+      operationId: threeWayMerge
+      tags: [Merge]
+      summary: Git-style 3-way merge with conflict reporting.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base, ours, theirs]
+              properties:
+                base:   { $ref: "#/components/schemas/ManagedDoc" }
+                ours:   { $ref: "#/components/schemas/ManagedDoc" }
+                theirs: { $ref: "#/components/schemas/ManagedDoc" }
+                config: { $ref: "#/components/schemas/MergerConfig" }
+      responses:
+        "200":
+          description: Merged document + conflict path list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  doc:       { $ref: "#/components/schemas/ManagedDoc" }
+                  conflicts: { type: array, items: { type: string } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/pack-his:
+    post:
+      operationId: packHis
+      tags: [Pack]
+      summary: Re-encode `_his` to columnar JSON or CBOR binary.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [doc]
+              properties:
+                doc: { $ref: "#/components/schemas/ManagedDoc" }
+                fmt:
+                  type: string
+                  enum: [cols, cbor]
+                  default: cols
+      responses:
+        "200":
+          description: Packed document.
+          content: { application/json: { schema: { type: object, properties: { doc: { type: object } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/unpack-his:
+    post:
+      operationId: unpackHis
+      tags: [Pack]
+      summary: Restore `_his` from columnar / CBOR to dict-of-dicts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [doc]
+              properties:
+                doc: { type: object }
+      responses:
+        "200":
+          description: Unpacked document.
+          content: { application/json: { schema: { type: object, properties: { doc: { $ref: "#/components/schemas/ManagedDoc" } } } } }
+        "400": { $ref: "#/components/responses/BadRequest" }
+
+  /api/validate:
+    post:
+      operationId: validateDoc
+      tags: [Inspect]
+      summary: Structural + per-field validation (collects all issues).
+      description: |
+        Returns two arrays:
+          * `structural_issues` — shape-level errors collected by the
+            server's multi-error validator.
+          * `warnings` — library-level drift / tamper findings from
+            `JsonMerge.validate` (only run when shape is sane).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [doc]
+              properties:
+                doc: { $ref: "#/components/schemas/ManagedDoc" }
+      responses:
+        "200":
+          description: Validation result.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  structural_issues:
+                    type: array
+                    items: { $ref: "#/components/schemas/Issue" }
+                  warnings:
+                    type: array
+                    items: { type: string }
+
+components:
+  schemas:
+    MergerConfig:
+      type: object
+      description: Per-call overrides for the `JSONMERGE` class flags.
+      properties:
+        qtyMath:   { type: boolean, default: true }
+        addHashes: { type: boolean, default: true }
+        addCrEp:   { type: boolean, default: true }
+        addCrIso:  { type: boolean, default: false }
+        addUpIso:  { type: boolean, default: false }
+        debug:     { type: boolean, default: false }
+
+    HisRecord:
+      type: object
+      required: [t]
+      properties:
+        t: { type: integer, description: "Unix epoch seconds (UTC)" }
+        h: { type: string,  description: "Short content hash (first 8 hex of SHA-256)" }
+
+    ManagedDoc:
+      type: object
+      required: [_his, upDtEp]
+      properties:
+        _his:
+          description: |
+            `_his` sidecar — present in one of three wire forms:
+              * dict-of-dicts (default in-memory; `_hisF` absent)
+              * columnar JSON `{p,t,h}` arrays (`_hisF: "c"`)
+              * CBOR base64 blob `{d,s}` (`_hisF: "b"`)
+          oneOf:
+            - type: object
+              additionalProperties: { $ref: "#/components/schemas/HisRecord" }
+            - type: object
+              required: [p, t]
+              properties:
+                p: { type: array, items: { type: string } }
+                t: { type: array, items: { type: integer } }
+                h: { type: array, items: { type: string } }
+            - type: object
+              required: [d, s]
+              properties:
+                d: { type: string, description: "base64 of CBOR bytes" }
+                s: { type: string, description: "integrity hash of the raw bytes" }
+        _hisF:
+          type: string
+          enum: [c, b]
+          description: Wire-format marker. Absent ⇒ dict-of-dicts.
+        upDtEp:  { type: integer }
+        crDtEp:  { type: integer }
+        schemaV: { type: integer, enum: [2, 3] }
+
+    Issue:
+      type: object
+      required: [loc, code, msg]
+      properties:
+        loc:
+          type: array
+          description: JSON Pointer-style location of the offending field.
+          items: { oneOf: [ { type: string }, { type: integer } ] }
+        code:
+          type: string
+          description: |
+            Stable identifier for the kind of problem.
+            One of: `invalid_type`, `invalid_value`, `missing_field`,
+            `invalid_path`, `reserved_key`, `shape_mismatch`,
+            `out_of_range`, `schema_drift`, `unsupported_schema`,
+            `unavailable`, `integrity_failure`, `invalid_json`.
+        msg:
+          type: string
+          description: Human-readable description.
+
+    Error:
+      type: object
+      required: [status_code, error, detail]
+      properties:
+        status_code: { type: integer }
+        error:       { type: string }
+        detail:
+          oneOf:
+            - type: string
+            - type: array
+              items: { $ref: "#/components/schemas/Issue" }
+            - type: object
+
+  responses:
+    BadRequest:
+      description: Validation / shape errors. `detail` is the full list.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    ValidationError:
+      description: FastAPI / pydantic validation error.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    InternalServerError:
+      description: Unexpected server error.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
