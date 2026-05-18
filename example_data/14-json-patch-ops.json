@@ -1,0 +1,7 @@
+[
+  { "op": "replace", "path": "/name",    "value": "Bob M. Smith" },
+  { "op": "replace", "path": "/address", "value": "456 New Lane, Riverside, CA 92501" },
+  { "op": "replace", "path": "/apples",  "value": "green" },
+  { "op": "replace", "path": "/qty",     "value": 8 },
+  { "op": "add",     "path": "/paid",    "value": true }
+]

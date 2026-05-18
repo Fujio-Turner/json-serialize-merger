@@ -1,0 +1,16 @@
+{
+  "docType": "invoiceRequest",
+  "name": "Bob Smith",
+  "address": "999 New Address Ave. Riverside, CA 92501",
+  "apples": "green",
+  "qty": -5,
+  "_his": {
+    "name":    { "v": "Bob Smith", "t": 1700000000, "h": "5dba3ec0" },
+    "address": { "v": "999 New Address Ave. Riverside, CA 92501", "t": 1700005000, "h": "11111111" },
+    "apples":  { "v": "green", "t": 1700005000, "h": "22222222" },
+    "qty":     { "v": -5, "t": 1700005000, "h": "33333333" }
+  },
+  "upDtEp": 1700005000,
+  "crDtEp": 1700005000,
+  "schemaV": 2
+}

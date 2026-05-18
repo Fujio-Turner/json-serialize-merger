@@ -1,0 +1,6 @@
+[
+  { "address.city": "Riverside" },
+  { "tags[1]": "net60" },
+  { "lines[0].qty": 8 },
+  { "paid": true }
+]

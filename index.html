@@ -1,0 +1,569 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>json-serialize-merger — playground</title>
+  <link href="https://cdn.jsdelivr.net/npm/daisyui@4.12.10/dist/full.min.css" rel="stylesheet" type="text/css" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="./JsonMerge.js"></script>
+  <style>
+    .json-area { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+    pre.out { max-height: 480px; overflow: auto; }
+    .tab-active { font-weight: 600; }
+    .byte-badge { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body class="min-h-screen bg-base-200">
+
+<!-- Navbar -->
+<div class="navbar bg-base-100 shadow-md sticky top-0 z-30">
+  <div class="flex-1">
+    <a class="btn btn-ghost text-xl">📦 json-serialize-merger</a>
+    <span class="badge badge-outline ml-2">browser playground</span>
+  </div>
+  <div class="flex-none gap-2">
+    <a class="btn btn-sm btn-ghost" href="./docs/DESIGN.md" target="_blank">DESIGN.md</a>
+    <a class="btn btn-sm btn-ghost" href="./README.md" target="_blank">README</a>
+    <select id="themePicker" class="select select-sm select-bordered">
+      <option selected>light</option><option>dim</option><option>dark</option>
+      <option>cupcake</option><option>cyberpunk</option><option>synthwave</option>
+      <option>night</option><option>dracula</option><option>corporate</option>
+    </select>
+  </div>
+</div>
+
+<div class="container mx-auto p-6">
+
+  <!-- Hero -->
+  <div class="hero bg-base-100 rounded-2xl shadow mb-6">
+    <div class="hero-content flex-col lg:flex-row">
+      <div class="text-left">
+        <h1 class="text-3xl font-bold">Field-level, timestamp-based JSON merge</h1>
+        <p class="py-2 max-w-2xl">
+          Try every operation in <code>JsonMerge.js</code> (the JS port of
+          <code>example_python/JsonMerge.py</code>). Load any sample from
+          <code>./example_data/</code>, edit the JSON, click a button.
+        </p>
+        <div class="flex flex-wrap gap-2 mt-2">
+          <span class="badge badge-primary">makeNewDoc</span>
+          <span class="badge badge-secondary">updateDoc</span>
+          <span class="badge badge-accent">mergeDocReq</span>
+          <span class="badge badge-info">blindMerge</span>
+          <span class="badge badge-warning">threeWayMerge</span>
+          <span class="badge badge-success">diff / patch</span>
+          <span class="badge badge-neutral">validate / history</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Config / flags -->
+  <div class="card bg-base-100 shadow mb-6">
+    <div class="card-body">
+      <div class="flex flex-wrap items-center gap-6">
+        <h2 class="card-title">JSONMERGE flags</h2>
+
+        <div class="tooltip tooltip-bottom" data-tip="Clamp any leaf whose path ends in 'qty' to >= 0 after every merge. Inventory-safe: a negative quantity becomes 0 instead of going below zero.">
+          <label class="label cursor-pointer gap-2">
+            <span class="label-text">qtyMath</span>
+            <input id="cfg-qtyMath" type="checkbox" class="toggle toggle-primary" checked />
+          </label>
+        </div>
+
+        <div class="tooltip tooltip-bottom" data-tip="Store a short content hash 'h' (first 8 hex of SHA-256) per field inside _his. Used by validate() to detect drift or out-of-band edits.">
+          <label class="label cursor-pointer gap-2">
+            <span class="label-text">addHashes</span>
+            <input id="cfg-addHashes" type="checkbox" class="toggle toggle-primary" checked />
+          </label>
+        </div>
+
+        <div class="tooltip tooltip-bottom" data-tip="Write the document-creation epoch ('crDtEp') when makeNewDoc() stamps a plain doc. Disable if you don't want a creation timestamp.">
+          <label class="label cursor-pointer gap-2">
+            <span class="label-text">addCrEp</span>
+            <input id="cfg-addCrEp" type="checkbox" class="toggle toggle-primary" checked />
+          </label>
+        </div>
+
+        <div class="tooltip tooltip-bottom" data-tip="Also write a human-readable ISO-8601 creation date ('crDt') on makeNewDoc(), in addition to crDtEp.">
+          <label class="label cursor-pointer gap-2">
+            <span class="label-text">addCrIso</span>
+            <input id="cfg-addCrIso" type="checkbox" class="toggle" />
+          </label>
+        </div>
+
+        <div class="tooltip tooltip-bottom" data-tip="Also write a human-readable ISO-8601 last-updated date ('upDt') every time the doc is updated/merged, in addition to upDtEp.">
+          <label class="label cursor-pointer gap-2">
+            <span class="label-text">addUpIso</span>
+            <input id="cfg-addUpIso" type="checkbox" class="toggle" />
+          </label>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div role="tablist" class="tabs tabs-boxed mb-4 bg-base-100">
+    <a role="tab" data-tab="make"   class="tab tab-active">1. makeNewDoc</a>
+    <a role="tab" data-tab="update" class="tab">2. updateDoc</a>
+    <a role="tab" data-tab="req"    class="tab">3. mergeDocReq</a>
+    <a role="tab" data-tab="blind"  class="tab">4. blindMerge</a>
+    <a role="tab" data-tab="three"  class="tab">5. threeWayMerge</a>
+    <a role="tab" data-tab="diff"   class="tab">6. diff / patch</a>
+    <a role="tab" data-tab="insp"   class="tab">7. validate / history</a>
+  </div>
+
+  <!-- ====== makeNewDoc ====== -->
+  <section data-panel="make" class="card bg-base-100 shadow">
+    <div class="card-body">
+      <h2 class="card-title">makeNewDoc(doc)</h2>
+      <p class="text-sm opacity-80">Stamp a plain JSON document with the <code>_his</code> sidecar, <code>upDtEp</code>, <code>crDtEp</code>, etc.</p>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <button class="btn btn-sm" data-load="make-input" data-file="example_data/01-simple-plain-invoice.json">Load: simple invoice</button>
+        <button class="btn btn-sm" data-load="make-input" data-file="example_data/02-nested-plain-invoice.json">Load: nested invoice</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+        <div>
+          <div class="label"><span class="label-text font-semibold">Input doc</span></div>
+          <textarea id="make-input" class="textarea textarea-bordered w-full json-area" rows="18" placeholder="paste JSON here"></textarea>
+        </div>
+        <div>
+          <div class="label"><span class="label-text font-semibold">Output</span></div>
+          <pre id="make-output" class="out json-area p-3 bg-base-200 rounded-lg"></pre>
+        </div>
+      </div>
+      <div class="card-actions mt-3">
+        <button id="btn-make" class="btn btn-primary">Run makeNewDoc</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== updateDoc ====== -->
+  <section data-panel="update" class="card bg-base-100 shadow hidden">
+    <div class="card-body">
+      <h2 class="card-title">updateDoc(doc, changes)</h2>
+      <p class="text-sm opacity-80">Apply a list of changes. Accepts legacy <code>[{k:v}]</code>, dotted paths, bracket-array, or nested dicts.</p>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <button class="btn btn-sm" data-load="update-doc" data-file="example_data/05-managed-invoice.json">Load doc: managed invoice</button>
+        <button class="btn btn-sm" data-load="update-changes" data-file="example_data/03-update-changes.json">Load changes: simple</button>
+        <button class="btn btn-sm" data-load="update-changes" data-file="example_data/04-update-changes-nested.json">Load changes: nested</button>
+        <button class="btn btn-sm" data-load="update-doc" data-file="example_data/02-nested-plain-invoice.json">Load doc: nested (will be stamped)</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+        <div>
+          <div class="label"><span class="label-text font-semibold">Doc</span></div>
+          <textarea id="update-doc" class="textarea textarea-bordered w-full json-area" rows="18"></textarea>
+        </div>
+        <div>
+          <div class="label"><span class="label-text font-semibold">Changes</span></div>
+          <textarea id="update-changes" class="textarea textarea-bordered w-full json-area" rows="18"></textarea>
+        </div>
+        <div>
+          <div class="label"><span class="label-text font-semibold">Output</span></div>
+          <pre id="update-output" class="out json-area p-3 bg-base-200 rounded-lg"></pre>
+        </div>
+      </div>
+      <div class="card-actions mt-3">
+        <button id="btn-update" class="btn btn-primary">Run updateDoc</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== mergeDocReq ====== -->
+  <section data-panel="req" class="card bg-base-100 shadow hidden">
+    <div class="card-body">
+      <h2 class="card-title">mergeDocReq(doc1, doc2)</h2>
+      <p class="text-sm opacity-80">Asymmetric merge: pull newer per-field values from <code>doc2</code> into <code>doc1</code>. The two may have different <code>docType</code>s.</p>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <button class="btn btn-sm" data-load="req-doc1" data-file="example_data/05-managed-invoice.json">Load doc1: invoice</button>
+        <button class="btn btn-sm" data-load="req-doc2" data-file="example_data/06-merge-request-doc.json">Load doc2: invoiceRequest (newer + negative qty)</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+        <div>
+          <div class="label"><span class="label-text font-semibold">doc1 (target)</span></div>
+          <textarea id="req-doc1" class="textarea textarea-bordered w-full json-area" rows="18"></textarea>
+        </div>
+        <div>
+          <div class="label"><span class="label-text font-semibold">doc2 (source)</span></div>
+          <textarea id="req-doc2" class="textarea textarea-bordered w-full json-area" rows="18"></textarea>
+        </div>
+        <div>
+          <div class="label"><span class="label-text font-semibold">Merged → doc1</span></div>
+          <pre id="req-output" class="out json-area p-3 bg-base-200 rounded-lg"></pre>
+        </div>
+      </div>
+      <div class="card-actions mt-3">
+        <button id="btn-req" class="btn btn-primary">Run mergeDocReq</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== blindMerge ====== -->
+  <section data-panel="blind" class="card bg-base-100 shadow hidden">
+    <div class="card-body">
+      <h2 class="card-title">blindMerge(doc1, doc2)</h2>
+      <p class="text-sm opacity-80">Symmetric per-field "newer timestamp wins" reconcile of two copies of the same logical doc.</p>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <button class="btn btn-sm" data-load="blind-doc1" data-file="example_data/07-blind-merge-doc1.json">Load doc1</button>
+        <button class="btn btn-sm" data-load="blind-doc2" data-file="example_data/08-blind-merge-doc2.json">Load doc2</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+        <div>
+          <div class="label"><span class="label-text font-semibold">doc1</span></div>
+          <textarea id="blind-doc1" class="textarea textarea-bordered w-full json-area" rows="18"></textarea>
+        </div>
+        <div>
+          <div class="label"><span class="label-text font-semibold">doc2</span></div>
+          <textarea id="blind-doc2" class="textarea textarea-bordered w-full json-area" rows="18"></textarea>
+        </div>
+        <div>
+          <div class="label"><span class="label-text font-semibold">Merged</span></div>
+          <pre id="blind-output" class="out json-area p-3 bg-base-200 rounded-lg"></pre>
+        </div>
+      </div>
+      <div class="card-actions mt-3">
+        <button id="btn-blind" class="btn btn-primary">Run blindMerge</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== threeWayMerge ====== -->
+  <section data-panel="three" class="card bg-base-100 shadow hidden">
+    <div class="card-body">
+      <h2 class="card-title">threeWayMerge(base, ours, theirs)</h2>
+      <p class="text-sm opacity-80">Git-style: reports conflicting paths (still auto-resolved by newer timestamp).</p>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <button class="btn btn-sm" data-load="three-base"  data-file="example_data/09-three-way-base.json">Load: base</button>
+        <button class="btn btn-sm" data-load="three-ours"  data-file="example_data/10-three-way-ours.json">Load: ours</button>
+        <button class="btn btn-sm" data-load="three-their" data-file="example_data/11-three-way-theirs.json">Load: theirs</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-3">
+        <div>
+          <div class="label"><span class="label-text font-semibold">base</span></div>
+          <textarea id="three-base" class="textarea textarea-bordered w-full json-area" rows="14"></textarea>
+        </div>
+        <div>
+          <div class="label"><span class="label-text font-semibold">ours</span></div>
+          <textarea id="three-ours" class="textarea textarea-bordered w-full json-area" rows="14"></textarea>
+        </div>
+        <div>
+          <div class="label"><span class="label-text font-semibold">theirs</span></div>
+          <textarea id="three-their" class="textarea textarea-bordered w-full json-area" rows="14"></textarea>
+        </div>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-4">
+        <div class="md:col-span-2">
+          <div class="label"><span class="label-text font-semibold">Merged</span></div>
+          <pre id="three-output" class="out json-area p-3 bg-base-200 rounded-lg"></pre>
+        </div>
+        <div>
+          <div class="label"><span class="label-text font-semibold">Conflicts</span></div>
+          <div id="three-conflicts" class="flex flex-col gap-2"></div>
+        </div>
+      </div>
+      <div class="card-actions mt-3">
+        <button id="btn-three" class="btn btn-primary">Run threeWayMerge</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== diff / patch ====== -->
+  <section data-panel="diff" class="card bg-base-100 shadow hidden">
+    <div class="card-body">
+      <h2 class="card-title">diffDocs(a,b) &nbsp;/&nbsp; patchDoc(doc, ops)</h2>
+      <p class="text-sm opacity-80">RFC 6902 JSON Patch round-trip. Compute a diff between two docs, or apply ops to a managed doc.</p>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <button class="btn btn-sm" data-load="diff-a" data-file="example_data/12-diff-doc-a.json">Load: doc A</button>
+        <button class="btn btn-sm" data-load="diff-b" data-file="example_data/13-diff-doc-b.json">Load: doc B</button>
+        <button class="btn btn-sm" data-load="patch-doc" data-file="example_data/05-managed-invoice.json">Load patch target: managed invoice</button>
+        <button class="btn btn-sm" data-load="patch-ops" data-file="example_data/14-json-patch-ops.json">Load: patch ops</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+        <div class="card bg-base-200">
+          <div class="card-body p-4">
+            <h3 class="font-semibold">diffDocs</h3>
+            <div class="label"><span class="label-text">doc A</span></div>
+            <textarea id="diff-a" class="textarea textarea-bordered w-full json-area" rows="10"></textarea>
+            <div class="label"><span class="label-text">doc B</span></div>
+            <textarea id="diff-b" class="textarea textarea-bordered w-full json-area" rows="10"></textarea>
+            <button id="btn-diff" class="btn btn-primary btn-sm mt-2">Run diffDocs</button>
+            <div class="label"><span class="label-text">Patch ops (A → B)</span></div>
+            <pre id="diff-output" class="out json-area p-3 bg-base-300 rounded-lg"></pre>
+          </div>
+        </div>
+        <div class="card bg-base-200">
+          <div class="card-body p-4">
+            <h3 class="font-semibold">patchDoc</h3>
+            <div class="label"><span class="label-text">doc</span></div>
+            <textarea id="patch-doc" class="textarea textarea-bordered w-full json-area" rows="10"></textarea>
+            <div class="label"><span class="label-text">ops</span></div>
+            <textarea id="patch-ops" class="textarea textarea-bordered w-full json-area" rows="10"></textarea>
+            <button id="btn-patch" class="btn btn-primary btn-sm mt-2">Run patchDoc</button>
+            <div class="label"><span class="label-text">Patched doc</span></div>
+            <pre id="patch-output" class="out json-area p-3 bg-base-300 rounded-lg"></pre>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ====== inspect ====== -->
+  <section data-panel="insp" class="card bg-base-100 shadow hidden">
+    <div class="card-body">
+      <h2 class="card-title">validate / historyIso / listChangesSince</h2>
+      <p class="text-sm opacity-80">Inspect a managed doc: drift &amp; tamper checks, human-readable history, recent changes since an epoch.</p>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <button class="btn btn-sm" data-load="insp-doc" data-file="example_data/05-managed-invoice.json">Load: managed invoice</button>
+        <button class="btn btn-sm" data-load="insp-doc" data-file="example_data/07-blind-merge-doc1.json">Load: replica A</button>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+        <div>
+          <div class="label"><span class="label-text font-semibold">Doc</span></div>
+          <textarea id="insp-doc" class="textarea textarea-bordered w-full json-area" rows="18"></textarea>
+          <div class="form-control mt-2">
+            <label class="label"><span class="label-text">listChangesSince — epoch seconds</span></label>
+            <input id="insp-since" type="number" class="input input-bordered" value="1700001000" />
+          </div>
+          <div class="card-actions mt-3">
+            <button id="btn-validate" class="btn btn-secondary">validate()</button>
+            <button id="btn-hisIso"   class="btn btn-accent">historyIso()</button>
+            <button id="btn-since"    class="btn btn-info">listChangesSince()</button>
+          </div>
+        </div>
+        <div>
+          <div class="label"><span class="label-text font-semibold">Result</span></div>
+          <pre id="insp-output" class="out json-area p-3 bg-base-200 rounded-lg"></pre>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Toast -->
+  <div id="toast-host" class="toast toast-end"></div>
+
+  <footer class="footer footer-center mt-10 p-6 text-sm opacity-70">
+    <aside>
+      <p>powered by <code>JsonMerge.js</code> + <a class="link" href="https://daisyui.com/components/">DaisyUI</a> · sample data in <code>./example_data/</code></p>
+    </aside>
+  </footer>
+</div>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+
+  // ---- theme ----
+  $("themePicker").addEventListener("change", e => {
+    document.documentElement.setAttribute("data-theme", e.target.value);
+  });
+
+  // ---- tabs ----
+  document.querySelectorAll('[role=tab]').forEach(tab => {
+    tab.addEventListener("click", () => {
+      document.querySelectorAll('[role=tab]').forEach(t => t.classList.remove("tab-active"));
+      tab.classList.add("tab-active");
+      const target = tab.dataset.tab;
+      document.querySelectorAll('section[data-panel]').forEach(s => {
+        s.classList.toggle("hidden", s.dataset.panel !== target);
+      });
+    });
+  });
+
+  // ---- toast helper ----
+  function toast(msg, kind = "info") {
+    const host = $("toast-host");
+    const div = document.createElement("div");
+    div.className = `alert alert-${kind}`;
+    div.innerHTML = `<span>${msg}</span>`;
+    host.appendChild(div);
+    setTimeout(() => div.remove(), 3500);
+  }
+
+  // ---- load sample files ----
+  document.querySelectorAll("[data-load]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const targetId = btn.dataset.load;
+      const file = btn.dataset.file;
+      try {
+        const res = await fetch(file);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        const text = await res.text();
+        const tgt = $(targetId);
+        tgt.value = text.trim();
+        if (typeof updateByteBadge === "function") updateByteBadge(tgt);
+        toast(`Loaded ${file}`, "success");
+      } catch (e) {
+        toast(`Failed to load ${file}: ${e.message}.<br/>Serve over http (e.g. <code>python3 -m http.server</code>).`, "error");
+      }
+    });
+  });
+
+  // ---- config ----
+  function makeMerger() {
+    const cfg = {
+      qtyMath:  $("cfg-qtyMath").checked,
+      addHashes:$("cfg-addHashes").checked,
+      addCrEp:  $("cfg-addCrEp").checked,
+      addCrIso: $("cfg-addCrIso").checked,
+      addUpIso: $("cfg-addUpIso").checked,
+    };
+    return new JsonMerge.JSONMERGE(cfg);
+  }
+  function parseJsonOr(id) {
+    try { return JSON.parse($(id).value); }
+    catch (e) { toast(`Invalid JSON in #${id}: ${e.message}`, "error"); throw e; }
+  }
+  function show(id, obj) {
+    $(id).textContent = JSON.stringify(obj, null, 2);
+    updateByteBadge($(id));
+  }
+
+  // ---- byte counter ----
+  // Counts bytes (UTF-8) of every .json-area textarea and .out <pre> and
+  // renders a small badge in a sibling .label-text-alt span next to its label.
+  const encoder = new TextEncoder();
+  function fmtBytes(n) {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    return `${(n / 1024 / 1024).toFixed(2)} MB`;
+  }
+  function ensureBadgeFor(el) {
+    // Find the closest preceding sibling .label, otherwise the parent's preceding .label.
+    let labelEl = null;
+    let p = el.previousElementSibling;
+    while (p) { if (p.classList && p.classList.contains("label")) { labelEl = p; break; } p = p.previousElementSibling; }
+    if (!labelEl) {
+      // Search within the same parent for a .label that precedes the element.
+      const parent = el.parentElement;
+      if (parent) {
+        const labels = parent.querySelectorAll(":scope > .label");
+        for (const l of labels) {
+          if (l.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING) labelEl = l;
+        }
+      }
+    }
+    if (!labelEl) {
+      // Create one above the element so the badge has a home.
+      labelEl = document.createElement("div");
+      labelEl.className = "label";
+      labelEl.innerHTML = '<span class="label-text"></span>';
+      el.parentNode.insertBefore(labelEl, el);
+    }
+    let badge = labelEl.querySelector(".byte-badge");
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "label-text-alt byte-badge badge badge-ghost badge-sm ml-auto";
+      labelEl.appendChild(badge);
+    }
+    return badge;
+  }
+  function getContent(el) {
+    if (el.tagName === "TEXTAREA" || el.tagName === "INPUT") return el.value || "";
+    return el.textContent || "";
+  }
+  function updateByteBadge(el) {
+    const badge = ensureBadgeFor(el);
+    const bytes = encoder.encode(getContent(el)).length;
+    badge.textContent = fmtBytes(bytes);
+  }
+  function initByteBadges() {
+    const els = document.querySelectorAll("textarea.json-area, pre.out");
+    els.forEach(el => {
+      updateByteBadge(el);
+      if (el.tagName === "TEXTAREA") {
+        el.addEventListener("input", () => updateByteBadge(el));
+      } else {
+        // Watch <pre> output for programmatic updates.
+        const obs = new MutationObserver(() => updateByteBadge(el));
+        obs.observe(el, { childList: true, characterData: true, subtree: true });
+      }
+    });
+  }
+  initByteBadges();
+
+  // ---- makeNewDoc ----
+  $("btn-make").addEventListener("click", () => {
+    const doc = parseJsonOr("make-input");
+    const out = makeMerger().makeNewDoc(doc);
+    show("make-output", out);
+  });
+
+  // ---- updateDoc ----
+  $("btn-update").addEventListener("click", () => {
+    const doc = parseJsonOr("update-doc");
+    const changes = parseJsonOr("update-changes");
+    const m = makeMerger();
+    const managed = m.isManaged(doc) ? doc : m.makeNewDoc(doc);
+    const out = m.updateDoc(managed, changes);
+    show("update-output", out);
+  });
+
+  // ---- mergeDocReq ----
+  $("btn-req").addEventListener("click", () => {
+    const d1 = parseJsonOr("req-doc1");
+    const d2 = parseJsonOr("req-doc2");
+    const out = makeMerger().mergeDocReq(d1, d2);
+    show("req-output", out);
+  });
+
+  // ---- blindMerge ----
+  $("btn-blind").addEventListener("click", () => {
+    const d1 = parseJsonOr("blind-doc1");
+    const d2 = parseJsonOr("blind-doc2");
+    const out = makeMerger().blindMerge(d1, d2);
+    show("blind-output", out);
+  });
+
+  // ---- threeWayMerge ----
+  $("btn-three").addEventListener("click", () => {
+    const base   = parseJsonOr("three-base");
+    const ours   = parseJsonOr("three-ours");
+    const theirs = parseJsonOr("three-their");
+    const { merged, conflicts } = makeMerger().threeWayMerge(base, ours, theirs);
+    show("three-output", merged);
+    const host = $("three-conflicts");
+    host.innerHTML = "";
+    if (!conflicts.length) {
+      host.innerHTML = '<div class="alert alert-success"><span>No conflicts 🎉</span></div>';
+    } else {
+      conflicts.forEach(p => {
+        const el = document.createElement("div");
+        el.className = "alert alert-warning";
+        el.innerHTML = `<span><code>${p}</code></span>`;
+        host.appendChild(el);
+      });
+    }
+  });
+
+  // ---- diff / patch ----
+  $("btn-diff").addEventListener("click", () => {
+    const a = parseJsonOr("diff-a");
+    const b = parseJsonOr("diff-b");
+    show("diff-output", makeMerger().diffDocs(a, b));
+  });
+  $("btn-patch").addEventListener("click", () => {
+    const doc = parseJsonOr("patch-doc");
+    const ops = parseJsonOr("patch-ops");
+    const m = makeMerger();
+    const managed = m.isManaged(doc) ? doc : m.makeNewDoc(doc);
+    show("patch-output", m.patchDoc(managed, ops));
+  });
+
+  // ---- inspect ----
+  $("btn-validate").addEventListener("click", () => {
+    const doc = parseJsonOr("insp-doc");
+    const issues = makeMerger().validate(doc);
+    show("insp-output", issues.length ? issues : "✅ healthy — no warnings");
+  });
+  $("btn-hisIso").addEventListener("click", () => {
+    show("insp-output", makeMerger().historyIso(parseJsonOr("insp-doc")));
+  });
+  $("btn-since").addEventListener("click", () => {
+    const ep = parseInt($("insp-since").value, 10);
+    show("insp-output", makeMerger().listChangesSince(parseJsonOr("insp-doc"), ep));
+  });
+})();
+</script>
+</body>
+</html>

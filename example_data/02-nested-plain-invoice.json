@@ -1,0 +1,15 @@
+{
+  "docType": "invoice",
+  "name": "Bob",
+  "address": {
+    "city": "Lake Falls",
+    "zip": "8000",
+    "state": "MA"
+  },
+  "tags": ["vip", "net30"],
+  "lines": [
+    { "sku": "A-1", "qty": 5 },
+    { "sku": "B-2", "qty": 3 }
+  ],
+  "paid": false
+}

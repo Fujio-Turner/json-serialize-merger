@@ -1,0 +1,15 @@
+{
+  "docType": "invoice",
+  "name": "Robert",
+  "address": { "city": "Mountain View", "zip": "94040" },
+  "qty": 7,
+  "_his": {
+    "name":         { "v": "Robert", "t": 1700004000, "h": "cc" },
+    "address.city": { "v": "Mountain View", "t": 1700004000, "h": "dd" },
+    "address.zip":  { "v": "94040", "t": 1700004000, "h": "ee" },
+    "qty":          { "v": 7, "t": 1700004000, "h": "ff" }
+  },
+  "upDtEp": 1700004000,
+  "crDtEp": 1700000000,
+  "schemaV": 2
+}

@@ -1,0 +1,16 @@
+{
+  "docType": "invoice",
+  "name": "Bob Smith",
+  "address": "123 Fake St. Lake Falls, MA 8000",
+  "apples": "red",
+  "qty": 12,
+  "_his": {
+    "name":    { "v": "Bob Smith", "t": 1700000000, "h": "5dba3ec0" },
+    "address": { "v": "123 Fake St. Lake Falls, MA 8000", "t": 1700000000, "h": "d2962d0d" },
+    "apples":  { "v": "red", "t": 1700000000, "h": "4bc9274d" },
+    "qty":     { "v": 12, "t": 1700000000, "h": "a3d8f3b0" }
+  },
+  "upDtEp": 1700000000,
+  "crDtEp": 1700000000,
+  "schemaV": 2
+}

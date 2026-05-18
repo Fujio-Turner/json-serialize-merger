@@ -1,0 +1,7 @@
+{
+  "docType": "invoice",
+  "name": "Bob",
+  "address": { "city": "Lake Falls", "zip": "8000" },
+  "tags": ["vip", "net30"],
+  "qty": 10
+}

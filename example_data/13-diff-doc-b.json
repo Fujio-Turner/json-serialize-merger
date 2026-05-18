@@ -1,0 +1,7 @@
+{
+  "docType": "invoice",
+  "name": "Bob Smith",
+  "address": { "city": "Riverside", "zip": "8000", "state": "CA" },
+  "tags": ["vip", "net60"],
+  "qty": 8
+}

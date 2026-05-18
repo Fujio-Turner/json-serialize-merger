@@ -1,0 +1,15 @@
+{
+  "docType": "invoice",
+  "name": "Bob",
+  "address": { "city": "Lake Falls", "zip": "8000" },
+  "qty": 10,
+  "_his": {
+    "name":         { "v": "Bob", "t": 1700000000, "h": "11" },
+    "address.city": { "v": "Lake Falls", "t": 1700000000, "h": "22" },
+    "address.zip":  { "v": "8000", "t": 1700000000, "h": "33" },
+    "qty":          { "v": 10, "t": 1700000000, "h": "44" }
+  },
+  "upDtEp": 1700000000,
+  "crDtEp": 1700000000,
+  "schemaV": 2
+}

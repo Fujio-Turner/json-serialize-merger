@@ -1,0 +1,15 @@
+{
+  "docType": "invoice",
+  "name": "Bob",
+  "address": { "city": "Riverside", "zip": "8000" },
+  "qty": 4,
+  "_his": {
+    "name":         { "v": "Bob", "t": 1700000000, "h": "11" },
+    "address.city": { "v": "Riverside", "t": 1700003000, "h": "aa" },
+    "address.zip":  { "v": "8000", "t": 1700000000, "h": "33" },
+    "qty":          { "v": 4, "t": 1700003000, "h": "bb" }
+  },
+  "upDtEp": 1700003000,
+  "crDtEp": 1700000000,
+  "schemaV": 2
+}
