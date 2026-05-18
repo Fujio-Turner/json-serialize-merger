@@ -2,6 +2,41 @@
   <img src="img/overview.svg" alt="json-serialize-merger overview: two replicas merged into a time-correct document" width="800"/>
 </p>
 
+### 🚀 QUICK START — Docker
+The fastest way to see everything (interactive playground + live API) is to run the Python reference container. It bundles the shared HTML/JS playground, the sample JSON, the diagrams, and the FastAPI backend into a single image.
+
+```bash
+# from the repo root
+docker compose -f example_python/docker-compose.yml up --build
+```
+
+Or with plain Docker:
+
+```bash
+docker build -f example_python/Dockerfile -t json-merger-python .
+docker run --rm -p 9090:9090 json-merger-python
+```
+
+Then open **<http://localhost:9090/>** in your browser.
+
+| URL                                        | What's there                                                    |
+|--------------------------------------------|------------------------------------------------------------------|
+| <http://localhost:9090/>                   | Interactive playground (`index.html`)                            |
+| <http://localhost:9090/> → 🖼 Diagrams      | Visual reference for every merge mode                            |
+| <http://localhost:9090/> → 🎬 Document over time | End-to-end demo: one invoice walking through every operation |
+| <http://localhost:9090/api/version>        | Quick liveness check                                             |
+| <http://localhost:9090/api-docs>           | Swagger UI (hand-maintained `docs/openapi.yaml`)                 |
+| <http://localhost:9090/docs>               | Auto-generated FastAPI Swagger UI                                |
+
+The shared assets (`index.html`, `JsonMerge.js`, `example_data/`, `docs/`, `img/`) live at the repo root precisely so future `example_<lang>/` containers (Go, Node, …) can reuse them unchanged — see [`example_python/DOCKER.md`](example_python/DOCKER.md).
+
+To stop:
+```bash
+docker compose -f example_python/docker-compose.yml down
+```
+
+---
+
 ### DATA/JSON IN CONFLICTS
 In a JSON databases ,like Couchbase and in particular Couchbase Mobile, when you have a document(s) were two or more people change the same piece of information you get conflicts.
 
